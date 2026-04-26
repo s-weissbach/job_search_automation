@@ -59,7 +59,8 @@ class JobAssessor:
         ]
 
     def _assess_one(self, job: dict) -> dict:
-        desc = (job.get("description") or "").strip()
+        raw = job.get("description")
+        desc = str(raw).strip() if isinstance(raw, str) else ""
         if len(desc) > self.max_desc_chars:
             desc = desc[:self.max_desc_chars] + "..."
 

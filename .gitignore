@@ -11,6 +11,9 @@ cv/cv_summary.*
 results/*
 !results/.gitkeep
 
+# Personal config (keywords, locations) — use config.example.yaml as template
+config.yaml
+
 # Secrets
 .env
 *.env

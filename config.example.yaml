@@ -1,22 +1,19 @@
-# Job search configuration — safe to commit (no personal data)
+# Job search configuration template — copy to config.yaml and fill in your preferences
+# cp config.example.yaml config.yaml
 
 search:
   keywords:
-    - "computational biologist"
-    - "bioinformatics scientist"
-    - "single-cell bioinformatics"
-    - "spatial transcriptomics"
+    - "your job title"
+    - "related role"
   locations:
     - "Remote"
-    - "Berlin, Germany"
-    - "Munich, Germany"
-    - "Germany"
+    - "Your City, Country"
   sites:
     - "linkedin"
     - "indeed"
   results_per_site: 20
   hours_old: 72
-  country_indeed: "Germany"
+  country_indeed: "USA"        # Change to your country: Germany, UK, etc.
   # Set true to fetch full descriptions from LinkedIn (slower but better assessments)
   linkedin_fetch_description: false
 
