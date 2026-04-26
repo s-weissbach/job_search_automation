@@ -51,6 +51,7 @@ def main() -> None:
     )
     parser.add_argument("--min-score", type=int, default=None, help="Minimum fit score 1-10")
     parser.add_argument("--dry-run", action="store_true", help="Scrape only, skip AI assessment")
+    parser.add_argument("--resume", action="store_true", help="Resume interrupted run from cache")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -60,11 +61,17 @@ def main() -> None:
         print("Error: ANTHROPIC_API_KEY not set. Add it to .env or export it.")
         sys.exit(1)
 
+    import pandas as pd
     import anthropic
     from src.scraper import scrape_jobs
     from src.cv_processor import load_cv, compress_cv, save_compressed_cv
     from src.assessor import JobAssessor
     from src.reporter import print_summary, save_results
+
+    results_dir = Path(config["output"]["results_dir"])
+    results_dir.mkdir(exist_ok=True)
+    scrape_cache = results_dir / ".scrape_cache.csv"
+    assess_cache = results_dir / ".assess_cache.csv"
 
     cv_path = resolve_cv_path(args.cv)
 
@@ -80,14 +87,22 @@ def main() -> None:
         cv_text = compressed
         print(f"Saved cv/cv_compressed.yaml ({len(compressed.split())} words)")
 
-    print(f"\nScraping jobs...")
-    jobs_df = scrape_jobs(config)
+    if args.resume and scrape_cache.exists():
+        print(f"\nResuming: loading {scrape_cache} from previous scrape...")
+        jobs_df = pd.read_csv(scrape_cache)
+        print(f"Loaded {len(jobs_df)} jobs from cache")
+    else:
+        if args.resume:
+            print("No cached scrape found — starting fresh.")
+        print(f"\nScraping jobs...")
+        jobs_df = scrape_jobs(config)
 
-    if jobs_df.empty:
-        print("No jobs found. Try broader keywords or more sites.")
-        return
+        if jobs_df.empty:
+            print("No jobs found. Try broader keywords or more sites.")
+            return
 
-    print(f"Found {len(jobs_df)} unique jobs")
+        print(f"Found {len(jobs_df)} unique jobs")
+        jobs_df.to_csv(scrape_cache, index=False)
 
     if args.dry_run:
         output_path = save_results(jobs_df, config)
@@ -99,7 +114,7 @@ def main() -> None:
     model = config["assessment"].get("model", "claude-haiku-4-5")
 
     print(f"\nAssessing {len(jobs_df)} jobs with {model}...")
-    scored_df = assessor.assess_all(jobs_df)
+    scored_df = assessor.assess_all(jobs_df, cache_path=str(assess_cache))
 
     min_score = args.min_score if args.min_score is not None else config["assessment"].get("min_score", 6)
     filtered = scored_df[scored_df["fit_score"] >= min_score]
@@ -108,6 +123,9 @@ def main() -> None:
 
     output_path = save_results(scored_df, config)
     print(f"Full results ({len(scored_df)} jobs) saved to {output_path}")
+
+    scrape_cache.unlink(missing_ok=True)
+    assess_cache.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

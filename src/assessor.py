@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 import pandas as pd
 import anthropic
@@ -130,19 +131,67 @@ class JobAssessor:
                 "concerns": []
             }
 
-    def assess_all(self, df: pd.DataFrame) -> pd.DataFrame:
+    def assess_all(self, df: pd.DataFrame, cache_path: str | None = None) -> pd.DataFrame:
+        # Load incremental cache keyed by job_url
+        cached = {}
+        if cache_path:
+            p = Path(cache_path)
+            if p.exists():
+                try:
+                    cache_df = pd.read_csv(p)
+                    for _, crow in cache_df.iterrows():
+                        url = crow.get("job_url", "")
+                        if url and pd.notna(url):
+                            cached[str(url)] = {
+                                "score": int(crow["fit_score"]) if pd.notna(crow.get("fit_score")) else 0,
+                                "reasoning": str(crow["fit_reasoning"]) if pd.notna(crow.get("fit_reasoning")) else "",
+                                "matching_skills": str(crow["matching_skills"]) if pd.notna(crow.get("matching_skills")) else "",
+                                "concerns": str(crow["concerns"]) if pd.notna(crow.get("concerns")) else "",
+                            }
+                    if cached:
+                        print(f"  Resuming: {len(cached)} jobs already assessed, skipping")
+                except Exception:
+                    pass  # corrupt cache, start fresh
+
+        cache_written = Path(cache_path).exists() if cache_path else False
         scores, reasonings, skills_list, concerns_list = [], [], [], []
 
         for i, (_, row) in enumerate(df.iterrows(), 1):
             title = (row.get("title") or "Unknown")[:50]
             company = (row.get("company") or "Unknown")[:30]
+            url = str(row.get("job_url", ""))
+
+            if url and url in cached:
+                r = cached[url]
+                scores.append(r["score"])
+                reasonings.append(r["reasoning"])
+                skills_list.append(r["matching_skills"])
+                concerns_list.append(r["concerns"])
+                label = f"score: {r['score']}/10 (cached)" if r["score"] != -1 else "skipped (cached)"
+                print(f"  [{i:>3}/{len(df)}] {title} @ {company}... {label}")
+                continue
+
             print(f"  [{i:>3}/{len(df)}] {title} @ {company}", end="... ", flush=True)
 
             result = self._assess_one(row.to_dict())
+            joined_skills = "; ".join(result.get("matching_skills", []))
+            joined_concerns = "; ".join(result.get("concerns", []))
+
             scores.append(result["score"])
             reasonings.append(result["reasoning"])
-            skills_list.append("; ".join(result.get("matching_skills", [])))
-            concerns_list.append("; ".join(result.get("concerns", [])))
+            skills_list.append(joined_skills)
+            concerns_list.append(joined_concerns)
+
+            if cache_path:
+                cache_row = pd.DataFrame([{
+                    "job_url": url,
+                    "fit_score": result["score"],
+                    "fit_reasoning": result["reasoning"],
+                    "matching_skills": joined_skills,
+                    "concerns": joined_concerns,
+                }])
+                cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
+                cache_written = True
 
             if result["score"] != -1:
                 print(f"score: {result['score']}/10")
