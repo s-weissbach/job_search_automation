@@ -223,20 +223,52 @@ def _scrape_successfactors(base_url: str, name: str, keywords: list[str], result
             print(f"\n    {name} ({kw}): failed ({e})", end="")
             continue
 
-        for tr in soup.find_all("tr"):
-            link = tr.find("a", href=lambda h: h and "/job/" in h)
-            if not link:
-                continue
+        for link in soup.find_all("a", href=lambda h: h and "/job/" in h):
             title = link.get_text(strip=True)
+            if not title:
+                continue
             href = link.get("href", "")
             job_url = base_url + href if href.startswith("/") else href
             if job_url in seen:
                 continue
             seen.add(job_url)
 
-            cells = tr.find_all("td")
-            location = cells[1].get_text(strip=True) if len(cells) > 1 else ""
-            date_str = cells[2].get_text(strip=True) if len(cells) > 2 else None
+            location = ""
+            date_str = None
+
+            # Layout 1: table row — <tr><td><a/></td><td>location</td><td>date</td></tr>
+            td = link.find_parent("td")
+            if td:
+                cells = td.find_parent("tr").find_all("td") if td.find_parent("tr") else []
+                location = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+                date_str = cells[2].get_text(strip=True) if len(cells) > 2 else None
+
+            else:
+                # Layout 2: oneline divs (Boehringer style)
+                # Title oneline → location oneline containing section-label + value div
+                oneline = link.find_parent(class_=lambda c: c and "oneline" in c)
+                if oneline:
+                    loc_line = oneline.find_next_sibling(class_=lambda c: c and "oneline" in c)
+                    if loc_line:
+                        val = loc_line.find(id=lambda i: i and "location-value" in i)
+                        if val:
+                            location = val.get_text(strip=True)
+                        else:
+                            for label in loc_line.find_all(class_=lambda c: c and "section-label" in c):
+                                label.decompose()
+                            for sr in loc_line.find_all(class_="sr-only"):
+                                sr.decompose()
+                            location = loc_line.get_text(strip=True)
+
+                # Layout 3: sibling divs — <div>title<a/></div><div>Location label</div><div>value</div>
+                if not location:
+                    title_div = link.find_parent("div")
+                    if title_div:
+                        for sib in title_div.find_next_siblings("div"):
+                            text = sib.get_text(strip=True)
+                            if text.lower() not in ("", "location", "date", "title"):
+                                location = text
+                                break
 
             description = ""
             if fetch_descriptions:
