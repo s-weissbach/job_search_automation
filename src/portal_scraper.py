@@ -165,6 +165,53 @@ def _scrape_workday(
     return rows
 
 
+def _scrape_successfactors(base_url: str, name: str, keywords: list[str], results_per_kw: int) -> list[dict]:
+    from bs4 import BeautifulSoup
+
+    seen: set[str] = set()
+    rows = []
+
+    for kw in keywords:
+        try:
+            resp = requests.get(
+                f"{base_url}/search/",
+                params={"q": kw, "sortColumn": "referencedate", "sortDirection": "desc",
+                        "startrow": 0, "numrows": results_per_kw},
+                headers={**_HEADERS, "Accept": "text/html,application/xhtml+xml"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+        except Exception as e:
+            print(f"\n    {name} ({kw}): failed ({e})", end="")
+            continue
+
+        for tr in soup.find_all("tr"):
+            link = tr.find("a", href=lambda h: h and "/job/" in h)
+            if not link:
+                continue
+            title = link.get_text(strip=True)
+            href = link.get("href", "")
+            job_url = base_url + href if href.startswith("/") else href
+            if job_url in seen:
+                continue
+            seen.add(job_url)
+
+            cells = tr.find_all("td")
+            location = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+            date_str = cells[2].get_text(strip=True) if len(cells) > 2 else None
+
+            rows.append(_row(
+                title=title, company=name, location=location,
+                url=job_url, description="",
+                site="successfactors", date_posted=date_str,
+            ))
+
+        time.sleep(0.3)
+
+    return rows
+
+
 def scrape_portals(config: dict) -> pd.DataFrame:
     portals_cfg = config.get("company_portals")
     if not portals_cfg:
@@ -193,6 +240,13 @@ def scrape_portals(config: dict) -> pd.DataFrame:
         name = entry.get("name", entry["api_url"])
         print(f"  [workday] {name}...", end=" ", flush=True)
         found = _scrape_workday(entry["api_url"], name, keywords, results_per, fetch_desc)
+        rows.extend(found)
+        print(f"{len(found)} jobs")
+
+    for entry in portals_cfg.get("successfactors", []):
+        name = entry.get("name", entry["base_url"])
+        print(f"  [successfactors] {name}...", end=" ", flush=True)
+        found = _scrape_successfactors(entry["base_url"], name, keywords, results_per)
         rows.extend(found)
         print(f"{len(found)} jobs")
 

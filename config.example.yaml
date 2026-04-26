@@ -50,6 +50,11 @@ company_portals:
     - slug: "your-company-slug"
       name: "Company Name"
 
+  # SAP SuccessFactors: base_url is the careers site root (HTML scraping via /search/)
+  successfactors:
+    - base_url: "https://jobs.example.com"
+      name: "Company Name"
+
   # Workday: find api_url by inspecting network requests on the careers page
   # (look for POST to .../wday/cxs/.../jobs)
   workday:
