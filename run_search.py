@@ -64,6 +64,7 @@ def main() -> None:
     import pandas as pd
     import anthropic
     from src.scraper import scrape_jobs
+    from src.portal_scraper import scrape_portals
     from src.cv_processor import load_cv, compress_cv, save_compressed_cv
     from src.assessor import JobAssessor
     from src.reporter import print_summary, save_results
@@ -101,7 +102,17 @@ def main() -> None:
             print("No jobs found. Try broader keywords or more sites.")
             return
 
-        print(f"Found {len(jobs_df)} unique jobs")
+        print(f"Found {len(jobs_df)} unique jobs from job boards")
+
+        if config.get("company_portals"):
+            print("\nScraping company portals...")
+            portal_df = scrape_portals(config)
+            if not portal_df.empty:
+                jobs_df = pd.concat([jobs_df, portal_df], ignore_index=True)
+                jobs_df = jobs_df.drop_duplicates(subset=["job_url"], keep="first")
+                jobs_df = jobs_df.drop_duplicates(subset=["title", "company"], keep="first")
+                print(f"Total after portals: {len(jobs_df)} unique jobs")
+
         jobs_df.to_csv(scrape_cache, index=False)
 
     if args.dry_run:

@@ -32,3 +32,24 @@ assessment:
 
 output:
   results_dir: "results"
+
+# Direct company portal scraping via Greenhouse/Lever JSON APIs and Workday CXS API.
+# Remove or comment out sections you don't need.
+company_portals:
+  fetch_workday_descriptions: false  # true = better assessments but much slower
+
+  # Greenhouse: token from boards-api.greenhouse.io/v1/boards/{token}/jobs
+  greenhouse:
+    - token: "your-company-token"
+      name: "Company Name"
+
+  # Lever: slug from api.lever.co/v0/postings/{slug}
+  lever:
+    - slug: "your-company-slug"
+      name: "Company Name"
+
+  # Workday: find api_url by inspecting network requests on the careers page
+  # (look for POST to .../wday/cxs/.../jobs)
+  workday:
+    - name: "Company Name"
+      api_url: "https://tenant.wd3.myworkdayjobs.com/wday/cxs/tenant/BoardName/jobs"
