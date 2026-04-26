@@ -36,14 +36,23 @@ _JOB_SCHEMA = {
     "additionalProperties": False
 }
 
+_SKIP_RESULT = {
+    "score": -1,
+    "reasoning": "Skipped: input token limit exceeded.",
+    "matching_skills": [],
+    "concerns": []
+}
+
 
 class JobAssessor:
     def __init__(self, client: anthropic.Anthropic, cv_text: str, config: dict):
         self.client = client
         self.model = config.get("model", "claude-haiku-4-5")
         self.max_desc_chars = config.get("max_description_chars", 4000)
+        self.max_input_tokens = config.get("max_input_tokens")  # None = no limit
         self._cache_tokens_read = 0
         self._cache_tokens_written = 0
+        self._skipped = 0
 
         self._system = [
             {
@@ -58,7 +67,7 @@ class JobAssessor:
             }
         ]
 
-    def _assess_one(self, job: dict) -> dict:
+    def _build_message(self, job: dict) -> str:
         raw = job.get("description")
         desc = str(raw).strip() if isinstance(raw, str) else ""
         if len(desc) > self.max_desc_chars:
@@ -74,15 +83,32 @@ class JobAssessor:
         if desc:
             parts.append(f"\nDescription:\n{desc}")
 
+        return "Assess candidate fit for this job:\n\n" + "\n".join(parts)
+
+    def _count_tokens(self, message: str) -> int:
+        result = self.client.messages.count_tokens(
+            model=self.model,
+            system=self._system,
+            messages=[{"role": "user", "content": message}],
+        )
+        return result.input_tokens
+
+    def _assess_one(self, job: dict) -> dict:
+        message = self._build_message(job)
+
+        if self.max_input_tokens is not None:
+            token_count = self._count_tokens(message)
+            if token_count > self.max_input_tokens:
+                print(f"skipped ({token_count:,} tokens > limit {self.max_input_tokens:,})")
+                self._skipped += 1
+                return _SKIP_RESULT
+
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=512,
                 system=self._system,
-                messages=[{
-                    "role": "user",
-                    "content": "Assess candidate fit for this job:\n\n" + "\n".join(parts)
-                }],
+                messages=[{"role": "user", "content": message}],
                 output_config={
                     "format": {
                         "type": "json_schema",
@@ -118,12 +144,15 @@ class JobAssessor:
             skills_list.append("; ".join(result.get("matching_skills", [])))
             concerns_list.append("; ".join(result.get("concerns", [])))
 
-            print(f"score: {result['score']}/10")
+            if result["score"] != -1:
+                print(f"score: {result['score']}/10")
             time.sleep(0.05)
 
+        if self._skipped:
+            print(f"\n  Skipped {self._skipped} jobs (exceeded max_input_tokens)")
         if self._cache_tokens_written or self._cache_tokens_read:
             print(
-                f"\n  Cache: {self._cache_tokens_read:,} tokens read "
+                f"  Cache: {self._cache_tokens_read:,} tokens read "
                 f"(~${self._cache_tokens_read * 0.000000025:.4f} saved), "
                 f"{self._cache_tokens_written:,} tokens written"
             )
@@ -133,4 +162,5 @@ class JobAssessor:
         out["fit_reasoning"] = reasonings
         out["matching_skills"] = skills_list
         out["concerns"] = concerns_list
+        # skipped jobs (score -1) go to the bottom
         return out.sort_values("fit_score", ascending=False)

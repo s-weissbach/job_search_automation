@@ -26,6 +26,9 @@ assessment:
   min_score: 6
   # Truncate job descriptions to limit tokens per assessment
   max_description_chars: 4000
+  # Skip jobs whose input exceeds this token count (counted before inference, no cost).
+  # Prevents runaway calls on jobs with massive descriptions. Remove or set null to disable.
+  max_input_tokens: 3000
 
 output:
   results_dir: "results"
