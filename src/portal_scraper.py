@@ -165,7 +165,44 @@ def _scrape_workday(
     return rows
 
 
-def _scrape_successfactors(base_url: str, name: str, keywords: list[str], results_per_kw: int) -> list[dict]:
+def _fetch_successfactors_description(job_url: str) -> str:
+    from bs4 import BeautifulSoup
+    try:
+        resp = requests.get(
+            job_url,
+            headers={**_HEADERS, "Accept": "text/html,application/xhtml+xml"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for tag in soup.find_all(["nav", "header", "footer", "script", "style"]):
+            tag.decompose()
+
+        # Try common SuccessFactors CSB containers
+        for selector in [
+            "div.job-description",
+            "div.section_jobDetail",
+            "[class*='jobDescription']",
+            "[class*='job-detail']",
+            "[id*='job-description']",
+            "main",
+            "article",
+        ]:
+            el = soup.select_one(selector)
+            if el:
+                text = el.get_text(separator="\n", strip=True)
+                if len(text) > 200:
+                    return text
+
+        # Fallback: collect meaningful paragraphs and headings
+        parts = [t.get_text(strip=True) for t in soup.find_all(["h2", "h3", "p", "li"])]
+        return "\n".join(p for p in parts if len(p) > 20)
+    except Exception:
+        return ""
+
+
+def _scrape_successfactors(base_url: str, name: str, keywords: list[str], results_per_kw: int, fetch_descriptions: bool) -> list[dict]:
     from bs4 import BeautifulSoup
 
     seen: set[str] = set()
@@ -201,9 +238,14 @@ def _scrape_successfactors(base_url: str, name: str, keywords: list[str], result
             location = cells[1].get_text(strip=True) if len(cells) > 1 else ""
             date_str = cells[2].get_text(strip=True) if len(cells) > 2 else None
 
+            description = ""
+            if fetch_descriptions:
+                description = _fetch_successfactors_description(job_url)
+                time.sleep(0.2)
+
             rows.append(_row(
                 title=title, company=name, location=location,
-                url=job_url, description="",
+                url=job_url, description=description,
                 site="successfactors", date_posted=date_str,
             ))
 
@@ -220,6 +262,7 @@ def scrape_portals(config: dict) -> pd.DataFrame:
     keywords = config["search"]["keywords"]
     results_per = config["search"].get("results_per_site", 20)
     fetch_desc = portals_cfg.get("fetch_workday_descriptions", False)
+    fetch_sf_desc = portals_cfg.get("fetch_successfactors_descriptions", False)
     rows = []
 
     for entry in portals_cfg.get("greenhouse", []):
@@ -246,7 +289,7 @@ def scrape_portals(config: dict) -> pd.DataFrame:
     for entry in portals_cfg.get("successfactors", []):
         name = entry.get("name", entry["base_url"])
         print(f"  [successfactors] {name}...", end=" ", flush=True)
-        found = _scrape_successfactors(entry["base_url"], name, keywords, results_per)
+        found = _scrape_successfactors(entry["base_url"], name, keywords, results_per, fetch_sf_desc)
         rows.extend(found)
         print(f"{len(found)} jobs")
 
