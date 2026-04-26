@@ -24,6 +24,7 @@ def scrape_jobs(config: dict) -> pd.DataFrame:
 
     combined = pd.concat(results, ignore_index=True)
     combined = combined.drop_duplicates(subset=["job_url"], keep="first")
+    combined = combined.drop_duplicates(subset=["title", "company"], keep="first")
     return combined
 
 
