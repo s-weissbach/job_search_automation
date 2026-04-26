@@ -1,0 +1,34 @@
+# Personal data — never commit
+cv/*.pdf
+cv/*.txt
+cv/*.docx
+cv/*.doc
+cv/cv_compressed.yaml
+cv/cv_summary.*
+!cv/.gitkeep
+
+# Results contain scraped data
+results/*
+!results/.gitkeep
+
+# Secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
