@@ -39,6 +39,8 @@ company_portals:
   fetch_workday_descriptions: false  # true = better assessments but much slower
 
   # Greenhouse: token from boards-api.greenhouse.io/v1/boards/{token}/jobs
+  # Not all companies use Greenhouse — check the careers page URL first
+  # (Phenom People, iCIMS, SAP SuccessFactors are other common platforms)
   greenhouse:
     - token: "your-company-token"
       name: "Company Name"
