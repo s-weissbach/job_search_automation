@@ -16,6 +16,12 @@ search:
   country_indeed: "USA"        # Change to your country: Germany, UK, etc.
   # Set true to fetch full descriptions from LinkedIn (slower but better assessments)
   linkedin_fetch_description: false
+  # Optional: map bare city names to countries for Workday portals that return
+  # city-only location strings (e.g. "Basel" instead of "Basel, Switzerland").
+  # location_city_map:
+  #   "Basel": "Switzerland"
+  #   "Schaftenau": "Austria"
+  #   "Biberach": "Germany"
 
 assessment:
   # claude-haiku-4-5: fastest and cheapest (~$0.001 per run of 50 jobs)
