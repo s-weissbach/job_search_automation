@@ -10,9 +10,85 @@ _HEADERS = {
 }
 
 
+import re
+
+_COUNTRY_ALIASES: dict[str, list[str]] = {
+    "germany":        [", de,", ", de ", "(de)", "deutschland", "germany"],
+    "switzerland":    [", ch,", ", ch ", "(ch)", "schweiz", "suisse", "switzerland"],
+    "austria":        [", at,", ", at ", "(at)", "österreich", "austria"],
+    "netherlands":    [", nl,", ", nl ", "(nl)", "holland", "netherlands"],
+    "united kingdom": [", gb,", ", gb ", "(gb)", ", uk,", ", uk ", "england",
+                       "scotland", "wales", "united kingdom"],
+    "france":         [", fr,", ", fr ", "(fr)", "france"],
+    "belgium":        [", be,", ", be ", "(be)", "belgium", "belgique"],
+    "sweden":         [", se,", ", se ", "(se)", "sweden", "sverige"],
+    "denmark":        [", dk,", ", dk ", "(dk)", "denmark", "danmark"],
+    "remote":         ["remote", "worldwide", "global", "anywhere", "hybrid"],
+}
+
+# Major EU pharma/biotech hub cities → country (for Workday bare-city location strings)
+_CITY_COUNTRY: dict[str, str] = {
+    # Switzerland
+    "basel": "switzerland", "zurich": "switzerland", "zug": "switzerland",
+    "geneva": "switzerland", "berne": "switzerland", "bern": "switzerland",
+    # Germany
+    "munich": "germany", "münchen": "germany", "berlin": "germany",
+    "frankfurt": "germany", "heidelberg": "germany", "mannheim": "germany",
+    "hamburg": "germany", "biberach": "germany", "marburg": "germany",
+    "darmstadt": "germany", "mainz": "germany", "düsseldorf": "germany",
+    "cologne": "germany", "köln": "germany", "leverkusen": "germany",
+    # United Kingdom (Cambridge OK — "United States - Massachusetts - Cambridge" has US context)
+    "london": "united kingdom", "oxford": "united kingdom",
+    "stevenage": "united kingdom",  # cambridge omitted — ambiguous with Cambridge MA
+    "uxbridge": "united kingdom", "edinburgh": "united kingdom",
+    "slough": "united kingdom", "chester": "united kingdom",
+    # Netherlands
+    "amsterdam": "netherlands", "leiden": "netherlands",
+    "eindhoven": "netherlands", "utrecht": "netherlands",
+    # Austria
+    "vienna": "austria", "wien": "austria", "graz": "austria",
+    "schaftenau": "austria", "linz": "austria",
+    # Denmark
+    "copenhagen": "denmark", "københavn": "denmark",
+    # Sweden
+    "stockholm": "sweden", "gothenburg": "sweden", "göteborg": "sweden",
+    # France
+    "paris": "france", "lyon": "france", "strasbourg": "france",
+    "marcy": "france",
+    # Belgium
+    "brussels": "belgium", "bruxelles": "belgium", "ghent": "belgium",
+    "beerse": "belgium",
+}
+
+
 def _keyword_match(text: str, keywords: list[str]) -> bool:
     t = text.lower()
     return any(kw.lower() in t for kw in keywords)
+
+
+def _location_match(job_location: str, configured_locations: list[str]) -> bool:
+    """Return True if job_location matches any configured location (or is unset)."""
+    if not configured_locations:
+        return True  # no filter configured — let everything through
+    if not job_location:
+        return True  # can't determine — let through
+    # Workday multi-location placeholder ("2 Locations", "3 Locations", …)
+    if re.search(r"^\d+\s+locations?$", job_location.strip(), re.I):
+        return True  # actual locations unknown — let through for assessment
+    loc = job_location.lower()
+    cfg_lowers = [c.lower() for c in configured_locations]
+    for cfg_lower in cfg_lowers:
+        # Direct substring match ("Germany" in "Biberach, Germany, Baden-Württemberg")
+        if cfg_lower in loc:
+            return True
+        # ISO code / alias match ("DE" in "Mainz, RP, DE, 55131")
+        if any(alias in loc for alias in _COUNTRY_ALIASES.get(cfg_lower, [])):
+            return True
+    # City → country lookup for bare-city Workday strings ("Basel", "Schaftenau")
+    for city, country in _CITY_COUNTRY.items():
+        if city in loc and country in cfg_lowers:
+            return True
+    return False
 
 
 def _row(title, company, location, url, description, site, date_posted=None):
@@ -32,7 +108,7 @@ def _row(title, company, location, url, description, site, date_posted=None):
     }
 
 
-def _scrape_greenhouse(token: str, name: str, keywords: list[str]) -> list[dict]:
+def _scrape_greenhouse(token: str, name: str, keywords: list[str], locations: list[str]) -> list[dict]:
     try:
         resp = requests.get(
             f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true",
@@ -52,6 +128,8 @@ def _scrape_greenhouse(token: str, name: str, keywords: list[str]) -> list[dict]
             continue
         offices = job.get("offices") or []
         location = offices[0].get("name", "") if offices else ""
+        if not _location_match(location, locations):
+            continue
         rows.append(_row(
             title=title, company=name, location=location,
             url=job.get("absolute_url", ""),
@@ -61,7 +139,7 @@ def _scrape_greenhouse(token: str, name: str, keywords: list[str]) -> list[dict]
     return rows
 
 
-def _scrape_lever(slug: str, name: str, keywords: list[str]) -> list[dict]:
+def _scrape_lever(slug: str, name: str, keywords: list[str], locations: list[str]) -> list[dict]:
     try:
         resp = requests.get(
             f"https://api.lever.co/v0/postings/{slug}?mode=json",
@@ -81,6 +159,8 @@ def _scrape_lever(slug: str, name: str, keywords: list[str]) -> list[dict]:
         if not _keyword_match(title + " " + desc, keywords):
             continue
         location = (job.get("categories") or {}).get("location") or job.get("workplaceType") or ""
+        if not _location_match(location, locations):
+            continue
         created = job.get("createdAt")
         date = datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created else None
         rows.append(_row(
@@ -116,6 +196,7 @@ def _scrape_workday(
     api_url: str,
     name: str,
     keywords: list[str],
+    locations: list[str],
     results_per_kw: int,
     fetch_descriptions: bool,
 ) -> list[dict]:
@@ -146,6 +227,10 @@ def _scrape_workday(
 
             job_url = f"{base_domain}/{board}{ext_path}" if ext_path else base_domain
 
+            location = job.get("locationsText", "")
+            if not _location_match(location, locations):
+                continue
+
             description = ""
             if fetch_descriptions and ext_path:
                 description = _fetch_workday_description(base_cxs, ext_path)
@@ -154,7 +239,7 @@ def _scrape_workday(
             rows.append(_row(
                 title=job.get("title", ""),
                 company=name,
-                location=job.get("locationsText", ""),
+                location=location,
                 url=job_url,
                 description=description,
                 site="workday",
@@ -202,7 +287,7 @@ def _fetch_successfactors_description(job_url: str) -> str:
         return ""
 
 
-def _scrape_successfactors(base_url: str, name: str, keywords: list[str], results_per_kw: int, fetch_descriptions: bool) -> list[dict]:
+def _scrape_successfactors(base_url: str, name: str, keywords: list[str], locations: list[str], results_per_kw: int, fetch_descriptions: bool) -> list[dict]:
     from bs4 import BeautifulSoup
 
     seen: set[str] = set()
@@ -270,6 +355,9 @@ def _scrape_successfactors(base_url: str, name: str, keywords: list[str], result
                                 location = text
                                 break
 
+            if not _location_match(location, locations):
+                continue
+
             description = ""
             if fetch_descriptions:
                 description = _fetch_successfactors_description(job_url)
@@ -292,6 +380,7 @@ def scrape_portals(config: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
     keywords = config["search"]["keywords"]
+    locations = config["search"].get("locations", [])
     results_per = config["search"].get("results_per_site", 20)
     fetch_desc = portals_cfg.get("fetch_workday_descriptions", False)
     fetch_sf_desc = portals_cfg.get("fetch_successfactors_descriptions", False)
@@ -300,28 +389,28 @@ def scrape_portals(config: dict) -> pd.DataFrame:
     for entry in portals_cfg.get("greenhouse", []):
         name = entry.get("name", entry["token"])
         print(f"  [greenhouse] {name}...", end=" ", flush=True)
-        found = _scrape_greenhouse(entry["token"], name, keywords)
+        found = _scrape_greenhouse(entry["token"], name, keywords, locations)
         rows.extend(found)
         print(f"{len(found)} jobs")
 
     for entry in portals_cfg.get("lever", []):
         name = entry.get("name", entry["slug"])
         print(f"  [lever] {name}...", end=" ", flush=True)
-        found = _scrape_lever(entry["slug"], name, keywords)
+        found = _scrape_lever(entry["slug"], name, keywords, locations)
         rows.extend(found)
         print(f"{len(found)} jobs")
 
     for entry in portals_cfg.get("workday", []):
         name = entry.get("name", entry["api_url"])
         print(f"  [workday] {name}...", end=" ", flush=True)
-        found = _scrape_workday(entry["api_url"], name, keywords, results_per, fetch_desc)
+        found = _scrape_workday(entry["api_url"], name, keywords, locations, results_per, fetch_desc)
         rows.extend(found)
         print(f"{len(found)} jobs")
 
     for entry in portals_cfg.get("successfactors", []):
         name = entry.get("name", entry["base_url"])
         print(f"  [successfactors] {name}...", end=" ", flush=True)
-        found = _scrape_successfactors(entry["base_url"], name, keywords, results_per, fetch_sf_desc)
+        found = _scrape_successfactors(entry["base_url"], name, keywords, locations, results_per, fetch_sf_desc)
         rows.extend(found)
         print(f"{len(found)} jobs")
 
