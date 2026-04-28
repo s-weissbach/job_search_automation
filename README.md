@@ -97,12 +97,13 @@ Saves `cv/cv_compressed.yaml` (gitignored). Review and edit it — this is what 
 ```bash
 conda activate job_search
 
-python run_search.py                  # full run
-python run_search.py --resume         # continue interrupted run
-python run_search.py --min-score 8   # override minimum score
-python run_search.py --dry-run       # scrape only, skip AI scoring
-python run_search.py --cv cv/cv.pdf  # force a specific CV file
-python run_search.py --compress-cv   # compress CV, then run
+python run_search.py                      # full run
+python run_search.py --resume             # continue interrupted run
+python run_search.py --min-score 8       # override minimum score
+python run_search.py --dry-run           # scrape only, skip AI scoring
+python run_search.py --cv cv/cv.pdf      # force a specific CV file
+python run_search.py --compress-cv       # compress CV, then run
+python run_search.py --clear-score-cache # reset score cache (after updating CV)
 ```
 
 Results are saved to `results/jobs_YYYYMMDD_HHMMSS.csv`.

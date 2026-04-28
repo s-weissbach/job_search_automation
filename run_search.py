@@ -52,6 +52,8 @@ def main() -> None:
     parser.add_argument("--min-score", type=int, default=None, help="Minimum fit score 1-10")
     parser.add_argument("--dry-run", action="store_true", help="Scrape only, skip AI assessment")
     parser.add_argument("--resume", action="store_true", help="Resume interrupted run from cache")
+    parser.add_argument("--clear-score-cache", action="store_true",
+                        help="Delete the persistent score store before running (use after updating your CV)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -72,7 +74,11 @@ def main() -> None:
     results_dir = Path(config["output"]["results_dir"])
     results_dir.mkdir(exist_ok=True)
     scrape_cache = results_dir / ".scrape_cache.csv"
-    assess_cache = results_dir / ".assess_cache.csv"
+    score_store  = results_dir / ".score_store.csv"   # persistent across runs
+
+    if args.clear_score_cache and score_store.exists():
+        score_store.unlink()
+        print("Score store cleared.")
 
     cv_path = resolve_cv_path(args.cv)
 
@@ -125,7 +131,7 @@ def main() -> None:
     model = config["assessment"].get("model", "claude-haiku-4-5")
 
     print(f"\nAssessing {len(jobs_df)} jobs with {model}...")
-    scored_df = assessor.assess_all(jobs_df, cache_path=str(assess_cache))
+    scored_df = assessor.assess_all(jobs_df, cache_path=str(score_store))
 
     min_score = args.min_score if args.min_score is not None else config["assessment"].get("min_score", 6)
     filtered = scored_df[scored_df["fit_score"] >= min_score]
@@ -136,7 +142,7 @@ def main() -> None:
     print(f"Full results ({len(scored_df)} jobs) saved to {output_path}")
 
     scrape_cache.unlink(missing_ok=True)
-    assess_cache.unlink(missing_ok=True)
+    # score_store is intentionally kept — reused across future runs
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -149,12 +150,13 @@ class JobAssessor:
                                 "concerns": str(crow["concerns"]) if pd.notna(crow.get("concerns")) else "",
                             }
                     if cached:
-                        print(f"  Resuming: {len(cached)} jobs already assessed, skipping")
+                        print(f"  Score store: {len(cached)} previously assessed jobs loaded")
                 except Exception:
                     pass  # corrupt cache, start fresh
 
         cache_written = Path(cache_path).exists() if cache_path else False
         scores, reasonings, skills_list, concerns_list = [], [], [], []
+        cache_hits = 0
 
         for i, (_, row) in enumerate(df.iterrows(), 1):
             title = (row.get("title") or "Unknown")[:50]
@@ -169,6 +171,7 @@ class JobAssessor:
                 concerns_list.append(r["concerns"])
                 label = f"score: {r['score']}/10 (cached)" if r["score"] != -1 else "skipped (cached)"
                 print(f"  [{i:>3}/{len(df)}] {title} @ {company}... {label}")
+                cache_hits += 1
                 continue
 
             print(f"  [{i:>3}/{len(df)}] {title} @ {company}", end="... ", flush=True)
@@ -189,6 +192,7 @@ class JobAssessor:
                     "fit_reasoning": result["reasoning"],
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
+                    "assessed_at": date.today().isoformat(),
                 }])
                 cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
                 cache_written = True
@@ -197,8 +201,10 @@ class JobAssessor:
                 print(f"score: {result['score']}/10")
             time.sleep(0.05)
 
+        if cache_hits:
+            print(f"  Score store: {cache_hits} jobs reused from previous runs (0 tokens)")
         if self._skipped:
-            print(f"\n  Skipped {self._skipped} jobs (exceeded max_input_tokens)")
+            print(f"  Skipped {self._skipped} jobs (exceeded max_input_tokens)")
         if self._cache_tokens_written or self._cache_tokens_read:
             print(
                 f"  Cache: {self._cache_tokens_read:,} tokens read "
