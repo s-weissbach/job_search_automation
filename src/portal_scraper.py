@@ -53,18 +53,18 @@ def _location_match(
 
     Matching order:
     1. Empty location or empty config → pass through
-    2. Workday "N Locations" placeholder → pass through
-    3. Direct country name substring ("Germany" in "Biberach, Germany, …")
-    4. ISO code word-boundary match (\bDE\b in "Mainz, RP, DE, 55131")
-    5. "Remote" keywords (remote / worldwide / global / …)
-    6. User-supplied city→country map from config (search.location_city_map)
+    2. Direct country name substring ("Germany" in "Biberach, Germany, …")
+    3. ISO code word-boundary match (\bDE\b in "Mainz, RP, DE, 55131")
+    4. "Remote" keywords (remote / worldwide / global / …)
+    5. User-supplied city→country map from config (search.location_city_map)
+
+    Note: Workday "N Locations" placeholders are NOT handled here — callers
+    must resolve the actual location list before calling this function.
     """
     if not configured_locations:
         return True
     if not job_location:
         return True
-    if re.search(r"^\d+\s+locations?$", job_location.strip(), re.I):
-        return True  # Workday multi-location — actual location unknown
 
     loc = job_location.lower()
     cfg_lowers = [c.lower() for c in configured_locations]
@@ -179,14 +179,58 @@ def _workday_urls(api_url: str) -> tuple[str, str, str]:
     return base_domain, board, base_cxs
 
 
-def _fetch_workday_description(base_cxs: str, external_path: str) -> str:
+def _fetch_workday_detail(base_cxs: str, external_path: str) -> tuple[str, list[str]]:
+    """Fetch a Workday job detail page.
+
+    Returns (description, locations) where `locations` is a list of location
+    strings suitable for `_location_match`.  The primary location is returned
+    as "City, Country" (e.g. "Penzberg, Germany") so the country-name and ISO
+    checks both fire correctly.  Additional locations (bare city names) are
+    appended so city_map overrides can still match them.
+
+    Returns ("", []) on any error.
+
+    Workday CXS detail response structure (jobPostingInfo):
+      location           – str, primary city name ("Penzberg")
+      additionalLocations – list[str], extra city names (["Rotkreuz"])
+      country            – dict with "descriptor" ("Germany") and "alpha2Code" ("DE")
+    """
     try:
         resp = requests.get(base_cxs + external_path, headers=_HEADERS, timeout=10)
         resp.raise_for_status()
         info = resp.json().get("jobPostingInfo", {})
-        return info.get("jobDescription", "") or ""
+        description = info.get("jobDescription", "") or ""
+
+        locs: list[str] = []
+
+        city = info.get("location") or ""
+        country_obj = info.get("country") or {}
+        country_name = country_obj.get("descriptor") or ""
+        country_code = country_obj.get("alpha2Code") or ""
+
+        # Primary location as "City, Country" so _location_match name/ISO checks work
+        if city and country_name:
+            locs.append(f"{city}, {country_name}")
+        elif city:
+            locs.append(city)
+        # Bare ISO code as a fallback (matches \bDE\b style check)
+        if country_code:
+            locs.append(country_code)
+
+        # Additional locations are city-only strings — country unknown.
+        # They match via city_map overrides in config or if the city name
+        # itself contains a country word (rare but handled).
+        for extra in (info.get("additionalLocations") or []):
+            if isinstance(extra, str) and extra:
+                locs.append(extra)
+            elif isinstance(extra, dict):
+                name = extra.get("descriptor") or extra.get("name") or ""
+                if name:
+                    locs.append(name)
+
+        return description, locs
     except Exception:
-        return ""
+        return "", []
 
 
 def _scrape_workday(
@@ -226,13 +270,31 @@ def _scrape_workday(
             job_url = f"{base_domain}/{board}{ext_path}" if ext_path else base_domain
 
             location = job.get("locationsText", "")
-            if not _location_match(location, locations, city_map):
-                continue
-
             description = ""
-            if fetch_descriptions and ext_path:
-                description = _fetch_workday_description(base_cxs, ext_path)
+
+            is_multi = bool(re.search(r"^\d+\s+locations?$", location.strip(), re.I))
+
+            if is_multi:
+                # "N Locations" — the listing API doesn't expose the actual locations.
+                # Fetch the detail page to resolve them and filter properly.
+                # Without this, every global job (US + Japan + Germany) would slip through.
+                if not ext_path:
+                    continue  # No detail URL to resolve — skip
+                description, actual_locs = _fetch_workday_detail(base_cxs, ext_path)
                 time.sleep(0.2)
+                if not actual_locs:
+                    continue  # Detail page exposed no locations — skip to avoid false positives
+                if not any(_location_match(loc, locations, city_map) for loc in actual_locs):
+                    continue
+                location = "; ".join(actual_locs)
+                if not fetch_descriptions:
+                    description = ""  # only keep if explicitly requested
+            else:
+                if not _location_match(location, locations, city_map):
+                    continue
+                if fetch_descriptions and ext_path:
+                    description, _ = _fetch_workday_detail(base_cxs, ext_path)
+                    time.sleep(0.2)
 
             rows.append(_row(
                 title=job.get("title", ""),
