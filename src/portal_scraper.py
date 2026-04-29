@@ -11,30 +11,23 @@ _HEADERS = {
 
 
 import re
+from functools import lru_cache
 
-# ISO 3166-1 alpha-2 codes — extend freely, no other code changes needed.
-# Used to match location strings like "Mainz, RP, DE, 55131" or "London, GB".
-_ISO_CODES: dict[str, str] = {
-    # Europe
-    "germany": "DE", "switzerland": "CH", "austria": "AT",
-    "netherlands": "NL", "united kingdom": "GB", "france": "FR",
-    "belgium": "BE", "sweden": "SE", "denmark": "DK", "norway": "NO",
-    "finland": "FI", "italy": "IT", "spain": "ES", "portugal": "PT",
-    "ireland": "IE", "poland": "PL", "czech republic": "CZ",
-    "hungary": "HU", "romania": "RO", "greece": "GR",
-    "luxembourg": "LU", "croatia": "HR", "slovakia": "SK",
-    "slovenia": "SI", "estonia": "EE", "latvia": "LV", "lithuania": "LT",
-    "bulgaria": "BG", "serbia": "RS", "ukraine": "UA",
-    # Americas
-    "united states": "US", "canada": "CA", "brazil": "BR",
-    "mexico": "MX", "argentina": "AR", "chile": "CL",
-    # Asia-Pacific
-    "japan": "JP", "china": "CN", "india": "IN", "australia": "AU",
-    "new zealand": "NZ", "singapore": "SG", "south korea": "KR",
-    "taiwan": "TW", "hong kong": "HK",
-    # Middle East & Africa
-    "israel": "IL", "south africa": "ZA", "united arab emirates": "AE",
-}
+import pycountry
+
+
+@lru_cache(maxsize=256)
+def _country_to_iso(name: str) -> str | None:
+    """Return the ISO 3166-1 alpha-2 code for a country name, or None.
+
+    Uses pycountry's fuzzy search so any country in the ISO database works
+    without a hardcoded lookup table.
+    """
+    try:
+        results = pycountry.countries.search_fuzzy(name)
+        return results[0].alpha_2 if results else None
+    except LookupError:
+        return None
 
 _REMOTE_TERMS = {"remote", "worldwide", "global", "anywhere", "hybrid"}
 
@@ -72,7 +65,7 @@ def _location_match(
     for cfg in cfg_lowers:
         if cfg in loc:
             return True
-        iso = _ISO_CODES.get(cfg)
+        iso = _country_to_iso(cfg)
         if iso and re.search(rf"\b{iso}\b", loc, re.I):
             return True
         if cfg == "remote" and any(t in loc for t in _REMOTE_TERMS):

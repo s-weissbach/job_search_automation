@@ -19,9 +19,20 @@ _JOB_SCHEMA = {
             "type": "integer",
             "description": "Fit score 1-10 (10 = perfect match)"
         },
+        "seniority_match": {
+            "type": "string",
+            "enum": ["too_junior", "match", "too_senior", "unclear"],
+            "description": (
+                "Whether the posted seniority level matches the candidate. "
+                "'too_junior' = intern/entry-level/junior roles (candidate is overqualified). "
+                "'too_senior' = director/VP/head-of roles requiring management experience the candidate lacks. "
+                "'match' = scientist/senior scientist/principal/staff/lead/independent contributor roles. "
+                "'unclear' = no seniority signals in the posting."
+            )
+        },
         "reasoning": {
             "type": "string",
-            "description": "2-3 sentence assessment of fit"
+            "description": "2-3 sentence assessment of fit, explicitly noting seniority level if it is a concern"
         },
         "matching_skills": {
             "type": "array",
@@ -31,15 +42,16 @@ _JOB_SCHEMA = {
         "concerns": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Gaps or potential mismatches"
+            "description": "Gaps or potential mismatches. Always include a seniority concern when seniority_match is not 'match'."
         }
     },
-    "required": ["score", "reasoning", "matching_skills", "concerns"],
+    "required": ["score", "seniority_match", "reasoning", "matching_skills", "concerns"],
     "additionalProperties": False
 }
 
 _SKIP_RESULT = {
     "score": -1,
+    "seniority_match": "unclear",
     "reasoning": "Skipped: input token limit exceeded.",
     "matching_skills": [],
     "concerns": []
@@ -62,7 +74,18 @@ class JobAssessor:
                 "text": (
                     "You assess job postings for candidate fit. "
                     "Score 1-10 based on: technical skill overlap, domain expertise alignment, "
-                    "career level match, and role type fit. Be concise and specific.\n\n"
+                    "seniority level match, and role type fit. Be concise and specific.\n\n"
+                    "SENIORITY CHECK (mandatory):\n"
+                    "The candidate's seniority is described under the 'seniority' key in the CANDIDATE PROFILE below "
+                    "(degree, years of experience, current level, and appropriate titles). "
+                    "Use this to judge level fit:\n"
+                    "- If the posting targets interns, trainees, entry-level, or junior candidates clearly below "
+                    "the candidate's level: set seniority_match='too_junior', reduce score by at least 2 points, "
+                    "and list a seniority concern.\n"
+                    "- If the posting requires substantial people-management, budget authority, or executive "
+                    "leadership clearly beyond the candidate's current level: set seniority_match='too_senior', "
+                    "reduce score by at least 1 point, and list a seniority concern.\n"
+                    "- If seniority is compatible or no clear signals exist: set seniority_match='match' or 'unclear'.\n\n"
                     f"CANDIDATE PROFILE:\n{cv_text}"
                 ),
                 "cache_control": {"type": "ephemeral"}
@@ -127,6 +150,7 @@ class JobAssessor:
         except Exception as e:
             return {
                 "score": 0,
+                "seniority_match": "unclear",
                 "reasoning": f"Assessment error: {e}",
                 "matching_skills": [],
                 "concerns": []
@@ -145,6 +169,7 @@ class JobAssessor:
                         if url and pd.notna(url):
                             cached[str(url)] = {
                                 "score": int(crow["fit_score"]) if pd.notna(crow.get("fit_score")) else 0,
+                                "seniority_match": str(crow["seniority_match"]) if pd.notna(crow.get("seniority_match")) else "unclear",
                                 "reasoning": str(crow["fit_reasoning"]) if pd.notna(crow.get("fit_reasoning")) else "",
                                 "matching_skills": str(crow["matching_skills"]) if pd.notna(crow.get("matching_skills")) else "",
                                 "concerns": str(crow["concerns"]) if pd.notna(crow.get("concerns")) else "",
@@ -155,7 +180,7 @@ class JobAssessor:
                     pass  # corrupt cache, start fresh
 
         cache_written = Path(cache_path).exists() if cache_path else False
-        scores, reasonings, skills_list, concerns_list = [], [], [], []
+        scores, seniority_matches, reasonings, skills_list, concerns_list = [], [], [], [], []
         cache_hits = 0
 
         for i, (_, row) in enumerate(df.iterrows(), 1):
@@ -166,6 +191,7 @@ class JobAssessor:
             if url and url in cached:
                 r = cached[url]
                 scores.append(r["score"])
+                seniority_matches.append(r.get("seniority_match", "unclear"))
                 reasonings.append(r["reasoning"])
                 skills_list.append(r["matching_skills"])
                 concerns_list.append(r["concerns"])
@@ -179,8 +205,10 @@ class JobAssessor:
             result = self._assess_one(row.to_dict())
             joined_skills = "; ".join(result.get("matching_skills", []))
             joined_concerns = "; ".join(result.get("concerns", []))
+            seniority = result.get("seniority_match", "unclear")
 
             scores.append(result["score"])
+            seniority_matches.append(seniority)
             reasonings.append(result["reasoning"])
             skills_list.append(joined_skills)
             concerns_list.append(joined_concerns)
@@ -189,6 +217,7 @@ class JobAssessor:
                 cache_row = pd.DataFrame([{
                     "job_url": url,
                     "fit_score": result["score"],
+                    "seniority_match": seniority,
                     "fit_reasoning": result["reasoning"],
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
@@ -198,7 +227,8 @@ class JobAssessor:
                 cache_written = True
 
             if result["score"] != -1:
-                print(f"score: {result['score']}/10")
+                seniority_label = f" [{seniority}]" if seniority != "match" else ""
+                print(f"score: {result['score']}/10{seniority_label}")
             time.sleep(0.05)
 
         if cache_hits:
@@ -214,6 +244,7 @@ class JobAssessor:
 
         out = df.copy()
         out["fit_score"] = scores
+        out["seniority_match"] = seniority_matches
         out["fit_reasoning"] = reasonings
         out["matching_skills"] = skills_list
         out["concerns"] = concerns_list

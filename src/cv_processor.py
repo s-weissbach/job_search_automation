@@ -34,6 +34,11 @@ def compress_cv(cv_text: str, client: anthropic.Anthropic, model: str) -> str:
 
 Structure (only these keys):
 - name: keep name, omit address/email/phone
+- seniority:
+    degree: highest academic degree (e.g. PhD, MSc, BSc, MD)
+    years_experience: total years of professional + research experience as an integer
+    current_level: current or most recent role-level label (e.g. Senior Scientist, Postdoc, Analyst)
+    appropriate_titles: list of 5-8 job titles that match this level of seniority
 - skills: list of technical skills, tools, languages, computational methods
 - experience:
   - "[Title] at [Org] ([dates]): key achievements in 1-2 lines"
