@@ -58,12 +58,25 @@ _SKIP_RESULT = {
 }
 
 
+# Pricing per million tokens (USD). Update if Anthropic changes rates.
+# Rows: (input, output, cache_write, cache_read)
+_PRICING: dict[str, tuple[float, float, float, float]] = {
+    "claude-haiku-4-5":  (0.80,  4.00, 1.00, 0.08),
+    "claude-haiku-3":    (0.25,  1.25, 0.30, 0.03),
+    "claude-sonnet-4-5": (3.00, 15.00, 3.75, 0.30),
+    "claude-sonnet-4-6": (3.00, 15.00, 3.75, 0.30),
+    "claude-opus-4-5":   (15.0, 75.00, 18.75, 1.50),
+}
+
+
 class JobAssessor:
     def __init__(self, client: anthropic.Anthropic, cv_text: str, config: dict):
         self.client = client
         self.model = config.get("model", "claude-haiku-4-5")
         self.max_desc_chars = config.get("max_description_chars", 4000)
         self.max_input_tokens = config.get("max_input_tokens")  # None = no limit
+        self._input_tokens = 0
+        self._output_tokens = 0
         self._cache_tokens_read = 0
         self._cache_tokens_written = 0
         self._skipped = 0
@@ -141,6 +154,8 @@ class JobAssessor:
                     }
                 }
             )
+            self._input_tokens += (response.usage.input_tokens or 0)
+            self._output_tokens += (response.usage.output_tokens or 0)
             self._cache_tokens_read += response.usage.cache_read_input_tokens or 0
             self._cache_tokens_written += response.usage.cache_creation_input_tokens or 0
 
@@ -235,12 +250,6 @@ class JobAssessor:
             print(f"  Score store: {cache_hits} jobs reused from previous runs (0 tokens)")
         if self._skipped:
             print(f"  Skipped {self._skipped} jobs (exceeded max_input_tokens)")
-        if self._cache_tokens_written or self._cache_tokens_read:
-            print(
-                f"  Cache: {self._cache_tokens_read:,} tokens read "
-                f"(~${self._cache_tokens_read * 0.000000025:.4f} saved), "
-                f"{self._cache_tokens_written:,} tokens written"
-            )
 
         out = df.copy()
         out["fit_score"] = scores
@@ -250,3 +259,26 @@ class JobAssessor:
         out["concerns"] = concerns_list
         # skipped jobs (score -1) go to the bottom
         return out.sort_values("fit_score", ascending=False)
+
+    def usage_summary(self) -> str:
+        """Return a formatted string with token counts and estimated cost for this run."""
+        prices = _PRICING.get(self.model)
+        lines = [
+            f"Token usage ({self.model}):",
+            f"  Input:        {self._input_tokens:>10,}",
+            f"  Output:       {self._output_tokens:>10,}",
+            f"  Cache write:  {self._cache_tokens_written:>10,}",
+            f"  Cache read:   {self._cache_tokens_read:>10,}",
+        ]
+        if prices:
+            p_in, p_out, p_cw, p_cr = (p / 1_000_000 for p in prices)
+            cost = (
+                self._input_tokens * p_in
+                + self._output_tokens * p_out
+                + self._cache_tokens_written * p_cw
+                + self._cache_tokens_read * p_cr
+            )
+            lines.append(f"  Estimated cost: ~${cost:.4f} USD")
+        else:
+            lines.append(f"  Estimated cost: unknown model '{self.model}' — add to _PRICING")
+        return "\n".join(lines)

@@ -132,6 +132,7 @@ def main() -> None:
 
     print(f"\nAssessing {len(jobs_df)} jobs with {model}...")
     scored_df = assessor.assess_all(jobs_df, cache_path=str(score_store))
+    print("\n" + assessor.usage_summary())
 
     min_score = args.min_score if args.min_score is not None else config["assessment"].get("min_score", 6)
     filtered = scored_df[scored_df["fit_score"] >= min_score]
