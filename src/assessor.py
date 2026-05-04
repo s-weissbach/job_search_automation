@@ -237,6 +237,12 @@ class JobAssessor:
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
                     "assessed_at": date.today().isoformat(),
+                    # metadata for HTML report
+                    "title": row.get("title", ""),
+                    "company": row.get("company", ""),
+                    "location": row.get("location", ""),
+                    "site": row.get("site", ""),
+                    "date_posted": row.get("date_posted", ""),
                 }])
                 cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
                 cache_written = True

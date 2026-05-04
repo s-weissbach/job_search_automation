@@ -54,6 +54,10 @@ def main() -> None:
     parser.add_argument("--resume", action="store_true", help="Resume interrupted run from cache")
     parser.add_argument("--clear-score-cache", action="store_true",
                         help="Delete the persistent score store before running (use after updating your CV)")
+    parser.add_argument("--check-active", action="store_true",
+                        help="Check whether past job URLs are still accessible before generating the report")
+    parser.add_argument("--html-report", action="store_true", default=True,
+                        help="Generate HTML report after each run (default: on)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -70,6 +74,8 @@ def main() -> None:
     from src.cv_processor import load_cv, compress_cv, save_compressed_cv
     from src.assessor import JobAssessor
     from src.reporter import print_summary, save_results
+    from src.html_reporter import generate_html_report
+    from src.active_checker import check_active_jobs
 
     results_dir = Path(config["output"]["results_dir"])
     results_dir.mkdir(exist_ok=True)
@@ -124,6 +130,11 @@ def main() -> None:
     if args.dry_run:
         output_path = save_results(jobs_df, config)
         print(f"Saved scraped jobs (unscored) to {output_path}")
+        if score_store.exists() and args.html_report:
+            html_path = results_dir / "report.html"
+            written = generate_html_report(score_store, html_path)
+            if written:
+                print(f"HTML report (historical) saved to {html_path}")
         return
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -144,6 +155,17 @@ def main() -> None:
 
     scrape_cache.unlink(missing_ok=True)
     # score_store is intentionally kept — reused across future runs
+
+    if args.check_active:
+        print("\nChecking active status of past jobs…")
+        check_active_jobs(score_store)
+
+    if args.html_report:
+        new_urls = set(scored_df["job_url"].dropna().astype(str).tolist())
+        html_path = results_dir / "report.html"
+        written = generate_html_report(score_store, html_path, new_urls=new_urls, min_score=min_score)
+        if written:
+            print(f"HTML report saved to {html_path}")
 
 
 if __name__ == "__main__":
