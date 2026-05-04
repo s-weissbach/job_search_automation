@@ -243,6 +243,7 @@ class JobAssessor:
                     "location": row.get("location", ""),
                     "site": row.get("site", ""),
                     "date_posted": row.get("date_posted", ""),
+                    "description": row.get("description", ""),
                 }])
                 cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
                 cache_written = True

@@ -38,6 +38,17 @@ def _html_escape(s: str) -> str:
     )
 
 
+def _render_description(raw: str) -> str:
+    if not raw or raw == "nan":
+        return ""
+    # Convert newlines to <br> and wrap in a collapsible <details>
+    escaped = _html_escape(raw).replace("\n", "<br>")
+    return f"""<details class="desc-details">
+  <summary class="desc-toggle">Job description</summary>
+  <div class="desc-body">{escaped}</div>
+</details>"""
+
+
 def _get(row, field: str, default=""):
     """Get a field from either a namedtuple (itertuples) or a Series."""
     val = getattr(row, field, default)
@@ -61,6 +72,7 @@ def _render_card(row, is_new: bool) -> str:
     reasoning  = _html_escape(_get(row, "fit_reasoning", "") or "")
     skills_raw = str(_get(row, "matching_skills", "") or "")
     concerns_raw = str(_get(row, "concerns", "") or "")
+    description_raw = str(_get(row, "description", "") or "")
 
     seniority  = str(_get(row, "seniority_match", "unclear") or "unclear")
     sen_label, sen_fg, sen_bg = _SENIORITY_LABELS.get(seniority, _SENIORITY_LABELS["unclear"])
@@ -129,6 +141,7 @@ def _render_card(row, is_new: bool) -> str:
     {skills_html}
     {concerns_html}
   </div>
+  {_render_description(description_raw)}
 </div>"""
 
 
@@ -184,6 +197,15 @@ main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
         margin: 3px 3px 0 0; font-size: 0.78rem; }
 .chip-skill   { background: #e6f5ee; color: #1a5a35; }
 .chip-concern { background: #fff0e6; color: #7a3010; }
+.desc-details { border-top: 1px solid #e8ecf3; }
+.desc-toggle  { cursor: pointer; padding: 10px 20px; font-size: 0.85rem;
+                color: #2255cc; user-select: none; list-style: none; }
+.desc-toggle::-webkit-details-marker { display: none; }
+.desc-toggle::before { content: "▶  "; font-size: 0.7rem; }
+details[open] .desc-toggle::before { content: "▼  "; }
+.desc-body    { padding: 12px 20px 16px; font-size: 0.85rem; color: #333;
+                line-height: 1.65; max-height: 420px; overflow-y: auto;
+                border-top: 1px solid #f0f2f7; background: #fafbfd; }
 """
 
 _JS = """
