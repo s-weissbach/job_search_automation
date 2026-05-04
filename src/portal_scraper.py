@@ -59,23 +59,28 @@ def _location_match(
     if not job_location:
         return True
 
-    loc = job_location.lower()
+    loc_lower = job_location.lower()
     cfg_lowers = [c.lower() for c in configured_locations]
 
     for cfg in cfg_lowers:
-        if cfg in loc:
+        if cfg in loc_lower:
             return True
         iso = _country_to_iso(cfg)
-        if iso and re.search(rf"\b{iso}\b", loc, re.I):
+        # ISO check is case-sensitive against the original location string.
+        # Using re.I would match "DE" against "de" in Spanish city names like
+        # "Cornellà de Llobregat", causing false positives for Germany.
+        # Workday embeds ISO codes in uppercase ("DE", "CH", "GB") so this
+        # correctly matches legitimate ISO-coded location strings.
+        if iso and re.search(rf"\b{iso}\b", job_location):
             return True
-        if cfg == "remote" and any(t in loc for t in _REMOTE_TERMS):
+        if cfg == "remote" and any(t in loc_lower for t in _REMOTE_TERMS):
             return True
 
     # User-configured city overrides (search.location_city_map in config.yaml)
     # Example: {"Basel": "Switzerland", "Schaftenau": "Austria"}
     if city_map:
         for city, country in city_map.items():
-            if city.lower() in loc and country.lower() in cfg_lowers:
+            if city.lower() in loc_lower and country.lower() in cfg_lowers:
                 return True
 
     return False
