@@ -22,7 +22,7 @@ def upload_score_store(score_store_path: str) -> int:
 
     p = Path(score_store_path)
     if not p.exists():
-        print(f"Score store not found: {score_store_path}")
+        print(f"Score store not found: {score_store_path} — nothing to upload.")
         return 0
 
     df = pd.read_csv(p)
@@ -30,7 +30,6 @@ def upload_score_store(score_store_path: str) -> int:
         print("Score store is empty — nothing to upload.")
         return 0
 
-    # Replace NaN with None for JSON serialization
     records = df.where(pd.notna(df), None).to_dict("records")
 
     client = create_client(url, key)

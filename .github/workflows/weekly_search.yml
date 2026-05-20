@@ -35,6 +35,7 @@ jobs:
         run: python3 run_search.py --html-report
 
       - name: Upload results to Supabase
+        if: hashFiles('results/.score_store.csv') != ''
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
