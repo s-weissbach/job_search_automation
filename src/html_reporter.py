@@ -7,10 +7,10 @@ import pandas as pd
 
 
 _SCORE_COLORS = {
-    (8, 10): ("#1a7a4a", "#e6f5ee"),   # green
-    (6,  7): ("#7a6a1a", "#f5f0e6"),   # amber
-    (4,  5): ("#a05010", "#f5ede6"),   # orange
-    (1,  3): ("#8a1a1a", "#f5e6e6"),   # red
+    (80, 100): ("#1a7a4a", "#e6f5ee"),
+    (60,  79): ("#7a6a1a", "#f5f0e6"),
+    (40,  59): ("#a05010", "#f5ede6"),
+    (0,   39): ("#8a1a1a", "#f5e6e6"),
 }
 
 _SENIORITY_LABELS = {
@@ -18,6 +18,14 @@ _SENIORITY_LABELS = {
     "too_junior": ("↓ Too junior",          "#7a6a1a", "#f5f0e6"),
     "too_senior": ("↑ Too senior",          "#a05010", "#f5ede6"),
     "unclear":    ("? Seniority unclear",  "#555",    "#f0f0f0"),
+}
+
+_SECTOR_LABELS = {
+    "industry":   ("🏭 Industry",    "#1a4a7a", "#e6eef5"),
+    "academia":   ("🎓 Academia",    "#4a1a7a", "#ede6f5"),
+    "government": ("🏛 Government",  "#555",    "#f0f0f0"),
+    "nonprofit":  ("💚 Non-profit",  "#1a7a4a", "#e6f5ee"),
+    "other":      ("◌ Other",        "#555",    "#f0f0f0"),
 }
 
 
@@ -41,7 +49,6 @@ def _html_escape(s: str) -> str:
 def _render_description(raw: str) -> str:
     if not raw or raw == "nan":
         return ""
-    # Convert newlines to <br> and wrap in a collapsible <details>
     escaped = _html_escape(raw).replace("\n", "<br>")
     return f"""<details class="desc-details">
   <summary class="desc-toggle">Job description</summary>
@@ -50,7 +57,6 @@ def _render_description(raw: str) -> str:
 
 
 def _get(row, field: str, default=""):
-    """Get a field from either a namedtuple (itertuples) or a Series."""
     val = getattr(row, field, default)
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return default
@@ -62,28 +68,31 @@ def _render_card(row, is_new: bool) -> str:
     score = int(raw_score) if raw_score != "" and not (isinstance(raw_score, float) and pd.isna(raw_score)) else 0
     score_fg, score_bg = _score_style(score)
 
-    title      = _html_escape(_get(row, "title", "Unknown title") or "Unknown title")
-    company    = _html_escape(_get(row, "company", "") or "")
-    location   = _html_escape(_get(row, "location", "") or "")
-    site       = _html_escape(_get(row, "site", "") or "")
+    title       = _html_escape(_get(row, "title", "Unknown title") or "Unknown title")
+    company     = _html_escape(_get(row, "company", "") or "")
+    location    = _html_escape(_get(row, "location", "") or "")
+    site        = _html_escape(_get(row, "site", "") or "")
     date_posted = _html_escape(_get(row, "date_posted", "") or "")
     assessed_at = _html_escape(_get(row, "assessed_at", "") or "")
-    url        = str(_get(row, "job_url", "") or "")
-    reasoning  = _html_escape(_get(row, "fit_reasoning", "") or "")
-    skills_raw = str(_get(row, "matching_skills", "") or "")
+    url         = str(_get(row, "job_url", "") or "")
+    reasoning   = _html_escape(_get(row, "fit_reasoning", "") or "")
+    skills_raw  = str(_get(row, "matching_skills", "") or "")
     concerns_raw = str(_get(row, "concerns", "") or "")
     description_raw = str(_get(row, "description", "") or "")
 
-    seniority  = str(_get(row, "seniority_match", "unclear") or "unclear")
+    seniority   = str(_get(row, "seniority_match", "unclear") or "unclear")
     sen_label, sen_fg, sen_bg = _SENIORITY_LABELS.get(seniority, _SENIORITY_LABELS["unclear"])
 
+    sector      = str(_get(row, "job_sector", "other") or "other")
+    sec_label, sec_fg, sec_bg = _SECTOR_LABELS.get(sector, _SECTOR_LABELS["other"])
+
     is_active_val = str(_get(row, "is_active", "")).lower()
-    if is_active_val == "true" or is_active_val == "active":
+    if is_active_val in ("true", "active"):
         active_badge = '<span class="badge" style="background:#e6f5ee;color:#1a7a4a">● Active</span>'
-    elif is_active_val == "false" or is_active_val == "expired":
+    elif is_active_val in ("false", "expired"):
         active_badge = '<span class="badge" style="background:#f5e6e6;color:#8a1a1a">✕ Expired</span>'
     else:
-        active_badge = '<span class="badge" style="background:#f0f0f0;color:#555">? Status unknown</span>'
+        active_badge = '<span class="badge" style="background:#f0f0f0;color:#555">○ Unverified</span>'
 
     new_badge = '<span class="badge" style="background:#dce8ff;color:#1a4a9a;font-weight:600">NEW</span>' if is_new else ""
 
@@ -119,11 +128,13 @@ def _render_card(row, is_new: bool) -> str:
 <div class="card"
      data-score="{score}"
      data-seniority="{_html_escape(seniority)}"
+     data-sector="{_html_escape(sector)}"
      data-site="{_html_escape(str(_get(row, 'site', '') or ''))}"
      data-active="{_html_escape(is_active_val)}"
+     data-new="{str(is_new).lower()}"
      data-search="{_html_escape((title + ' ' + company + ' ' + location).lower())}">
   <div class="card-header">
-    <span class="score-badge" style="background:{score_bg};color:{score_fg}">{score}/10</span>
+    <span class="score-badge" style="background:{score_bg};color:{score_fg}">{score}%</span>
     <div class="card-title-block">
       <div class="card-title">{title}</div>
       <div class="card-company">{company}</div>
@@ -132,6 +143,7 @@ def _render_card(row, is_new: bool) -> str:
       {new_badge}
       {active_badge}
       <span class="badge" style="background:{sen_bg};color:{sen_fg}">{sen_label}</span>
+      <span class="badge" style="background:{sec_bg};color:{sec_fg}">{sec_label}</span>
     </div>
     {url_link}
   </div>
@@ -172,10 +184,11 @@ main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
         transition: box-shadow 0.15s; }
 .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.11); }
 .card.hidden { display: none; }
+.card[data-new="true"] { border-left: 3px solid #2255cc; }
 
 .card-header { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px 10px; }
 .score-badge { font-size: 1.3rem; font-weight: 800; border-radius: 10px;
-               padding: 6px 12px; flex-shrink: 0; }
+               padding: 6px 12px; flex-shrink: 0; min-width: 64px; text-align: center; }
 .card-title-block { flex: 1; min-width: 0; }
 .card-title { font-size: 1.05rem; font-weight: 600; white-space: nowrap;
               overflow: hidden; text-overflow: ellipsis; }
@@ -213,8 +226,9 @@ const cards = document.querySelectorAll('.card');
 
 function applyFilters() {
   const q     = document.getElementById('search').value.toLowerCase();
-  const minSc = parseInt(document.getElementById('min-score').value || '1');
+  const minSc = parseInt(document.getElementById('min-score').value || '0');
   const sen   = document.getElementById('filter-seniority').value;
+  const sec   = document.getElementById('filter-sector').value;
   const site  = document.getElementById('filter-site').value;
   const act   = document.getElementById('filter-active').value;
 
@@ -224,6 +238,7 @@ function applyFilters() {
     const match  =
       score >= minSc &&
       (sen  === '' || c.dataset.seniority === sen) &&
+      (sec  === '' || c.dataset.sector    === sec) &&
       (site === '' || c.dataset.site      === site) &&
       (act  === '' || c.dataset.active    === act) &&
       (q    === '' || c.dataset.search.includes(q));
@@ -233,7 +248,7 @@ function applyFilters() {
   document.getElementById('result-count').textContent = `${visible} jobs shown`;
 }
 
-['search','min-score','filter-seniority','filter-site','filter-active']
+['search','min-score','filter-seniority','filter-sector','filter-site','filter-active']
   .forEach(id => document.getElementById(id)?.addEventListener('input', applyFilters));
 
 applyFilters();
@@ -246,17 +261,6 @@ def generate_html_report(
     new_urls: set[str] | None = None,
     min_score: int = 1,
 ) -> str:
-    """Generate a self-contained HTML report from the score store.
-
-    Args:
-        score_store_path: Path to .score_store.csv
-        output_path: Where to write the HTML file
-        new_urls: Set of job URLs assessed in the current run (highlighted as NEW)
-        min_score: Jobs below this score are still shown but the filter defaults to this
-
-    Returns:
-        Path to the written HTML file.
-    """
     store_path = Path(score_store_path)
     if not store_path.exists():
         return ""
@@ -265,26 +269,44 @@ def generate_html_report(
     if df.empty:
         return ""
 
-    # Sort by score desc, then by assessed_at desc
+    sort_cols = []
+    sort_asc = []
+    if "assessed_at" in df.columns:
+        sort_cols.append("assessed_at")
+        sort_asc.append(False)
     if "fit_score" in df.columns:
-        df = df.sort_values(["fit_score", "assessed_at"], ascending=[False, False])
+        sort_cols.append("fit_score")
+        sort_asc.append(False)
+    if sort_cols:
+        df = df.sort_values(sort_cols, ascending=sort_asc)
 
-    # Collect unique sites for filter dropdown
+    latest_date = None
+    if "assessed_at" in df.columns:
+        valid_dates = df["assessed_at"].dropna()
+        if not valid_dates.empty:
+            latest_date = valid_dates.max()
+
+    def _is_new(row) -> bool:
+        if new_urls is not None and str(getattr(row, "job_url", "")) in new_urls:
+            return True
+        if latest_date is not None:
+            return str(getattr(row, "assessed_at", "")) == str(latest_date)
+        return False
+
     sites = sorted(df["site"].dropna().unique()) if "site" in df.columns else []
-
-    new_urls = new_urls or set()
+    sectors = sorted(df["job_sector"].dropna().unique()) if "job_sector" in df.columns else []
 
     total = len(df)
-    new_count = len(new_urls)
+    new_count = int((df["assessed_at"] == latest_date).sum()) if latest_date and "assessed_at" in df.columns else 0
     above_min = int((df["fit_score"] >= min_score).sum()) if "fit_score" in df.columns else 0
 
     cards_html = "\n".join(
-        _render_card(row, str(getattr(row, "job_url", "")) in new_urls)
+        _render_card(row, _is_new(row))
         for row in df.itertuples(index=False)
     )
 
-    # site options
     site_options = "\n".join(f'<option value="{s}">{s}</option>' for s in sites)
+    sector_options = "\n".join(f'<option value="{s}">{s}</option>' for s in sectors)
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -305,16 +327,16 @@ def generate_html_report(
   <div class="stats">
     <div class="stat"><div class="stat-val">{total}</div><div class="stat-lbl">Total assessed</div></div>
     <div class="stat"><div class="stat-val">{new_count}</div><div class="stat-lbl">New this run</div></div>
-    <div class="stat"><div class="stat-val">{above_min}</div><div class="stat-lbl">Score ≥ {min_score}</div></div>
+    <div class="stat"><div class="stat-val">{above_min}</div><div class="stat-lbl">Score ≥ {min_score}%</div></div>
   </div>
 </header>
 <div class="controls">
   <input id="search" type="search" placeholder="Search title, company, location…">
   <select id="min-score">
-    <option value="1">All scores</option>
-    <option value="6" selected>Score ≥ 6</option>
-    <option value="7">Score ≥ 7</option>
-    <option value="8">Score ≥ 8</option>
+    <option value="0">All scores</option>
+    <option value="60" selected>Score ≥ 60%</option>
+    <option value="70">Score ≥ 70%</option>
+    <option value="80">Score ≥ 80%</option>
   </select>
   <select id="filter-seniority">
     <option value="">All seniority</option>
@@ -323,15 +345,18 @@ def generate_html_report(
     <option value="too_senior">Too senior</option>
     <option value="unclear">Unclear</option>
   </select>
+  <select id="filter-sector">
+    <option value="">All sectors</option>
+    {sector_options}
+  </select>
   <select id="filter-site">
     <option value="">All sources</option>
     {site_options}
   </select>
   <select id="filter-active">
     <option value="">Any status</option>
-    <option value="true">Active only</option>
-    <option value="false">Expired only</option>
-    <option value="">Unknown</option>
+    <option value="active">Active only</option>
+    <option value="expired">Expired only</option>
   </select>
   <span id="result-count"></span>
 </div>

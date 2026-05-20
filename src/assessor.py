@@ -6,18 +6,27 @@ from pathlib import Path
 import pandas as pd
 import anthropic
 
-# Prompt caching: the system prompt (CV + instructions) is marked ephemeral.
-# After the first job is assessed, subsequent assessments in the same run read
-# the CV from cache. Cache activates when the system prefix exceeds the model
-# minimum: 2048 tokens for claude-sonnet-4-6, 4096 for claude-haiku-4-5.
-# A typical multi-page CV easily exceeds both thresholds.
-
 _JOB_SCHEMA = {
     "type": "object",
     "properties": {
         "score": {
             "type": "integer",
-            "description": "Fit score 1-10 (10 = perfect match)"
+            "description": (
+                "Fit score 0-100 (percentage; 100 = perfect match). "
+                "Use the full range — strong match: 75-90, excellent: 90-100, "
+                "average: 50-70, weak: 20-45, very poor: 0-20."
+            )
+        },
+        "job_sector": {
+            "type": "string",
+            "enum": ["industry", "academia", "government", "nonprofit", "other"],
+            "description": (
+                "'industry' = private companies, corporations, pharma, biotech, tech; "
+                "'academia' = universities, research institutes (e.g. Max Planck, Helmholtz, EMBL, NIH intramural); "
+                "'government' = public sector agencies, national labs with government funding; "
+                "'nonprofit' = NGOs, foundations, patient advocacy orgs; "
+                "'other' = unclear or mixed."
+            )
         },
         "seniority_match": {
             "type": "string",
@@ -45,21 +54,19 @@ _JOB_SCHEMA = {
             "description": "Gaps or potential mismatches. Always include a seniority concern when seniority_match is not 'match'."
         }
     },
-    "required": ["score", "seniority_match", "reasoning", "matching_skills", "concerns"],
+    "required": ["score", "job_sector", "seniority_match", "reasoning", "matching_skills", "concerns"],
     "additionalProperties": False
 }
 
 _SKIP_RESULT = {
     "score": -1,
+    "job_sector": "other",
     "seniority_match": "unclear",
     "reasoning": "Skipped: input token limit exceeded.",
     "matching_skills": [],
     "concerns": []
 }
 
-
-# Pricing per million tokens (USD). Update if Anthropic changes rates.
-# Rows: (input, output, cache_write, cache_read)
 _PRICING: dict[str, tuple[float, float, float, float]] = {
     "claude-haiku-4-5":  (0.80,  4.00, 1.00, 0.08),
     "claude-haiku-3":    (0.25,  1.25, 0.30, 0.03),
@@ -68,13 +75,16 @@ _PRICING: dict[str, tuple[float, float, float, float]] = {
     "claude-opus-4-5":   (15.0, 75.00, 18.75, 1.50),
 }
 
+_DEFAULT_INDUSTRY_MALUS = 15
+
 
 class JobAssessor:
     def __init__(self, client: anthropic.Anthropic, cv_text: str, config: dict):
         self.client = client
         self.model = config.get("model", "claude-haiku-4-5")
         self.max_desc_chars = config.get("max_description_chars", 4000)
-        self.max_input_tokens = config.get("max_input_tokens")  # None = no limit
+        self.max_input_tokens = config.get("max_input_tokens")
+        self.industry_malus = config.get("industry_malus", _DEFAULT_INDUSTRY_MALUS)
         self._input_tokens = 0
         self._output_tokens = 0
         self._cache_tokens_read = 0
@@ -86,19 +96,24 @@ class JobAssessor:
                 "type": "text",
                 "text": (
                     "You assess job postings for candidate fit. "
-                    "Score 1-10 based on: technical skill overlap, domain expertise alignment, "
-                    "seniority level match, and role type fit. Be concise and specific.\n\n"
+                    "Score 0-100 (percentage) based on: technical skill overlap, domain expertise alignment, "
+                    "seniority level match, and role type fit. Use the full 0-100 range — "
+                    "don't cluster scores; a strong match should be 75-90, an excellent fit 90-100, "
+                    "an average fit 50-65, a weak fit 20-40. Be concise and specific.\n\n"
                     "SENIORITY CHECK (mandatory):\n"
                     "The candidate's seniority is described under the 'seniority' key in the CANDIDATE PROFILE below "
                     "(degree, years of experience, current level, and appropriate titles). "
                     "Use this to judge level fit:\n"
                     "- If the posting targets interns, trainees, entry-level, or junior candidates clearly below "
-                    "the candidate's level: set seniority_match='too_junior', reduce score by at least 2 points, "
+                    "the candidate's level: set seniority_match='too_junior', reduce score by at least 20 points, "
                     "and list a seniority concern.\n"
                     "- If the posting requires substantial people-management, budget authority, or executive "
                     "leadership clearly beyond the candidate's current level: set seniority_match='too_senior', "
-                    "reduce score by at least 1 point, and list a seniority concern.\n"
+                    "reduce score by at least 10 points, and list a seniority concern.\n"
                     "- If seniority is compatible or no clear signals exist: set seniority_match='match' or 'unclear'.\n\n"
+                    "JOB SECTOR: Identify whether the employer is 'industry' (private company/pharma/biotech/tech), "
+                    "'academia' (university/research institute), 'government', 'nonprofit', or 'other'. "
+                    "Score purely on technical fit — sector preference is not your concern.\n\n"
                     f"CANDIDATE PROFILE:\n{cv_text}"
                 ),
                 "cache_control": {"type": "ephemeral"}
@@ -165,14 +180,21 @@ class JobAssessor:
         except Exception as e:
             return {
                 "score": 0,
+                "job_sector": "other",
                 "seniority_match": "unclear",
                 "reasoning": f"Assessment error: {e}",
                 "matching_skills": [],
                 "concerns": []
             }
 
+    def _apply_malus(self, raw_score: int, sector: str) -> int:
+        if raw_score < 0:
+            return raw_score
+        if sector != "industry":
+            return max(0, raw_score - self.industry_malus)
+        return raw_score
+
     def assess_all(self, df: pd.DataFrame, cache_path: str | None = None) -> pd.DataFrame:
-        # Load incremental cache keyed by job_url
         cached = {}
         if cache_path:
             p = Path(cache_path)
@@ -184,6 +206,7 @@ class JobAssessor:
                         if url and pd.notna(url):
                             cached[str(url)] = {
                                 "score": int(crow["fit_score"]) if pd.notna(crow.get("fit_score")) else 0,
+                                "job_sector": str(crow["job_sector"]) if pd.notna(crow.get("job_sector")) else "other",
                                 "seniority_match": str(crow["seniority_match"]) if pd.notna(crow.get("seniority_match")) else "unclear",
                                 "reasoning": str(crow["fit_reasoning"]) if pd.notna(crow.get("fit_reasoning")) else "",
                                 "matching_skills": str(crow["matching_skills"]) if pd.notna(crow.get("matching_skills")) else "",
@@ -192,10 +215,10 @@ class JobAssessor:
                     if cached:
                         print(f"  Score store: {len(cached)} previously assessed jobs loaded")
                 except Exception:
-                    pass  # corrupt cache, start fresh
+                    pass
 
         cache_written = Path(cache_path).exists() if cache_path else False
-        scores, seniority_matches, reasonings, skills_list, concerns_list = [], [], [], [], []
+        scores, sectors, seniority_matches, reasonings, skills_list, concerns_list = [], [], [], [], [], []
         cache_hits = 0
 
         for i, (_, row) in enumerate(df.iterrows(), 1):
@@ -206,11 +229,12 @@ class JobAssessor:
             if url and url in cached:
                 r = cached[url]
                 scores.append(r["score"])
+                sectors.append(r.get("job_sector", "other"))
                 seniority_matches.append(r.get("seniority_match", "unclear"))
                 reasonings.append(r["reasoning"])
                 skills_list.append(r["matching_skills"])
                 concerns_list.append(r["concerns"])
-                label = f"score: {r['score']}/10 (cached)" if r["score"] != -1 else "skipped (cached)"
+                label = f"score: {r['score']}% (cached)" if r["score"] != -1 else "skipped (cached)"
                 print(f"  [{i:>3}/{len(df)}] {title} @ {company}... {label}")
                 cache_hits += 1
                 continue
@@ -218,11 +242,16 @@ class JobAssessor:
             print(f"  [{i:>3}/{len(df)}] {title} @ {company}", end="... ", flush=True)
 
             result = self._assess_one(row.to_dict())
+            raw_score = result["score"]
+            sector = result.get("job_sector", "other")
+            adjusted_score = self._apply_malus(raw_score, sector)
+
             joined_skills = "; ".join(result.get("matching_skills", []))
             joined_concerns = "; ".join(result.get("concerns", []))
             seniority = result.get("seniority_match", "unclear")
 
-            scores.append(result["score"])
+            scores.append(adjusted_score)
+            sectors.append(sector)
             seniority_matches.append(seniority)
             reasonings.append(result["reasoning"])
             skills_list.append(joined_skills)
@@ -231,13 +260,14 @@ class JobAssessor:
             if cache_path:
                 cache_row = pd.DataFrame([{
                     "job_url": url,
-                    "fit_score": result["score"],
+                    "fit_score": adjusted_score,
+                    "job_sector": sector,
                     "seniority_match": seniority,
                     "fit_reasoning": result["reasoning"],
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
                     "assessed_at": date.today().isoformat(),
-                    # metadata for HTML report
+                    "is_active": "active",
                     "title": row.get("title", ""),
                     "company": row.get("company", ""),
                     "location": row.get("location", ""),
@@ -248,9 +278,14 @@ class JobAssessor:
                 cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
                 cache_written = True
 
-            if result["score"] != -1:
+            if adjusted_score != -1:
+                malus_note = (
+                    f" (-{self.industry_malus} {sector})"
+                    if sector != "industry" and raw_score != adjusted_score
+                    else ""
+                )
                 seniority_label = f" [{seniority}]" if seniority != "match" else ""
-                print(f"score: {result['score']}/10{seniority_label}")
+                print(f"score: {adjusted_score}%{malus_note}{seniority_label}")
             time.sleep(0.05)
 
         if cache_hits:
@@ -260,15 +295,14 @@ class JobAssessor:
 
         out = df.copy()
         out["fit_score"] = scores
+        out["job_sector"] = sectors
         out["seniority_match"] = seniority_matches
         out["fit_reasoning"] = reasonings
         out["matching_skills"] = skills_list
         out["concerns"] = concerns_list
-        # skipped jobs (score -1) go to the bottom
         return out.sort_values("fit_score", ascending=False)
 
     def usage_summary(self) -> str:
-        """Return a formatted string with token counts and estimated cost for this run."""
         prices = _PRICING.get(self.model)
         lines = [
             f"Token usage ({self.model}):",

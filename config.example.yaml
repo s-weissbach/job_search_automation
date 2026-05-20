@@ -16,12 +16,9 @@ search:
   country_indeed: "USA"        # Change to your country: Germany, UK, etc.
   # Set true to fetch full descriptions from LinkedIn (slower but better assessments)
   linkedin_fetch_description: false
-  # Optional: map bare city names to countries for Workday portals that return
-  # city-only location strings (e.g. "Basel" instead of "Basel, Switzerland").
+  # Optional: map bare city names to countries for Workday portals
   # location_city_map:
   #   "Basel": "Switzerland"
-  #   "Schaftenau": "Austria"
-  #   "Biberach": "Germany"
 
 assessment:
   # claude-haiku-4-5: fastest and cheapest (~$0.001 per run of 50 jobs)
@@ -29,41 +26,35 @@ assessment:
   model: "claude-haiku-4-5"
   # Model used for the one-time CV compression step
   compression_model: "claude-sonnet-4-6"
-  min_score: 6
+  min_score: 60
   # Truncate job descriptions to limit tokens per assessment
   max_description_chars: 4000
   # Skip jobs whose input exceeds this token count (counted before inference, no cost).
-  # Prevents runaway calls on jobs with massive descriptions. Remove or set null to disable.
   max_input_tokens: 3000
+  # Points deducted from non-industry jobs (academia, government, nonprofit).
+  # Set to 0 to disable. Use --clear-score-cache after changing this.
+  industry_malus: 15
 
 output:
   results_dir: "results"
 
 # Direct company portal scraping via Greenhouse/Lever JSON APIs and Workday CXS API.
-# Remove or comment out sections you don't need.
 company_portals:
-  fetch_workday_descriptions: false         # true = better assessments, much slower
-  fetch_successfactors_descriptions: true   # SuccessFactors descriptions are fast (simple HTML)
+  fetch_workday_descriptions: false
+  fetch_successfactors_descriptions: true
 
-  # Greenhouse: token from boards-api.greenhouse.io/v1/boards/{token}/jobs
-  # Not all companies use Greenhouse — check the careers page URL first
-  # (Phenom People, iCIMS, SAP SuccessFactors are other common platforms)
   greenhouse:
     - token: "your-company-token"
       name: "Company Name"
 
-  # Lever: slug from api.lever.co/v0/postings/{slug}
   lever:
     - slug: "your-company-slug"
       name: "Company Name"
 
-  # SAP SuccessFactors: base_url is the careers site root (HTML scraping via /search/)
   successfactors:
     - base_url: "https://jobs.example.com"
       name: "Company Name"
 
-  # Workday: find api_url by inspecting network requests on the careers page
-  # (look for POST to .../wday/cxs/.../jobs)
   workday:
     - name: "Company Name"
       api_url: "https://tenant.wd3.myworkdayjobs.com/wday/cxs/tenant/BoardName/jobs"
