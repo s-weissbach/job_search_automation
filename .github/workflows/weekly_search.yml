@@ -3,7 +3,7 @@ name: Weekly Job Search
 on:
   schedule:
     - cron: '0 8 * * 1'  # Every Monday at 08:00 UTC
-  workflow_dispatch:       # Allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   search:
@@ -28,6 +28,12 @@ jobs:
         run: |
           mkdir -p cv
           printf '%s' "$CV_YAML" > cv/cv_compressed.yaml
+
+      - name: Restore score cache from Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 src/supabase_downloader.py results/.score_store.csv
 
       - name: Run job search and scoring
         env:
