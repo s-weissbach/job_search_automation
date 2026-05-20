@@ -5,6 +5,9 @@ on:
     - cron: '0 8 * * 1'  # Every Monday at 08:00 UTC
   workflow_dispatch:       # Allow manual trigger from GitHub UI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   search:
     runs-on: ubuntu-latest
@@ -17,18 +20,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
       - name: Write config.yaml from secret
-        run: echo "${{ secrets.CONFIG_YAML }}" > config.yaml
+        env:
+          CONFIG_YAML: ${{ secrets.CONFIG_YAML }}
+        run: printf '%s' "$CONFIG_YAML" > config.yaml
 
       - name: Write compressed CV from secret
+        env:
+          CV_YAML: ${{ secrets.CV_YAML }}
         run: |
           mkdir -p cv
-          echo "${{ secrets.CV_YAML }}" > cv/cv_compressed.yaml
+          printf '%s' "$CV_YAML" > cv/cv_compressed.yaml
 
       - name: Run job search and scoring
         env:
