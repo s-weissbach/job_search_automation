@@ -1,4 +1,5 @@
 """Push score store CSV to Supabase job_results table."""
+import json
 import os
 import sys
 from datetime import date
@@ -43,7 +44,9 @@ def upload_score_store(score_store_path: str) -> int:
         print("Score store is empty — nothing to upload.")
         return 0
 
-    records = df.where(pd.notna(df), None).to_dict("records")
+    # to_json serialises NaN → null; json.loads converts null → None, giving
+    # JSON-safe dicts without any float('nan') leaking through.
+    records = json.loads(df.to_json(orient="records"))
     for rec in records:
         for col in _DATE_COLUMNS:
             if col in rec:
