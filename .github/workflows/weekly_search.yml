@@ -2,7 +2,7 @@ name: Weekly Job Search
 
 on:
   schedule:
-    - cron: '0 8 * * 1'  # Every Monday at 08:00 UTC
+    - cron: '0 6 * * 1'  # Every Monday at 08:00 Basel time (CEST/UTC+2)
   workflow_dispatch:
 
 jobs:

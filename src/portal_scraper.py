@@ -1,5 +1,8 @@
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+_BASEL_TZ = ZoneInfo("Europe/Zurich")
 
 import pandas as pd
 import requests
@@ -157,7 +160,7 @@ def _scrape_lever(slug: str, name: str, keywords: list[str], locations: list[str
         if not _location_match(location, locations, city_map):
             continue
         created = job.get("createdAt")
-        date = datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created else None
+        date = datetime.fromtimestamp(created / 1000, tz=_BASEL_TZ).strftime("%Y-%m-%d") if created else None
         rows.append(_row(
             title=title, company=name, location=location,
             url=job.get("hostedUrl", ""),

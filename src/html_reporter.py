@@ -2,6 +2,9 @@
 
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_BASEL_TZ = ZoneInfo("Europe/Zurich")
 
 import pandas as pd
 
@@ -269,6 +272,9 @@ def generate_html_report(
     if df.empty:
         return ""
 
+    if "fit_score" in df.columns:
+        df["fit_score"] = pd.to_numeric(df["fit_score"], errors="coerce").fillna(0).astype(int)
+
     sort_cols = []
     sort_asc = []
     if "assessed_at" in df.columns:
@@ -308,7 +314,7 @@ def generate_html_report(
     site_options = "\n".join(f'<option value="{s}">{s}</option>' for s in sites)
     sector_options = "\n".join(f'<option value="{s}">{s}</option>' for s in sectors)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    timestamp = datetime.now(_BASEL_TZ).strftime("%Y-%m-%d %H:%M")
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
