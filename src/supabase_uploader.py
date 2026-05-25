@@ -1,9 +1,22 @@
 """Push score store CSV to Supabase job_results table."""
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
+
+_DATE_COLUMNS = {"date_posted", "assessed_at"}
+
+
+def _to_date_or_none(val) -> str | None:
+    if val is None or (isinstance(val, float) and pd.isna(val)) or val == "":
+        return None
+    try:
+        date.fromisoformat(str(val))
+        return str(val)
+    except ValueError:
+        return None
 
 
 def upload_score_store(score_store_path: str) -> int:
@@ -31,6 +44,10 @@ def upload_score_store(score_store_path: str) -> int:
         return 0
 
     records = df.where(pd.notna(df), None).to_dict("records")
+    for rec in records:
+        for col in _DATE_COLUMNS:
+            if col in rec:
+                rec[col] = _to_date_or_none(rec[col])
 
     client = create_client(url, key)
     client.table("job_results").upsert(records, on_conflict="job_url").execute()
