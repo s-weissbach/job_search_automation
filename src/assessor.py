@@ -221,6 +221,13 @@ class JobAssessor:
                     pass
 
         cache_written = Path(cache_path).exists() if cache_path else False
+        existing_cols = None
+        if cache_written and cache_path:
+            try:
+                existing_cols = pd.read_csv(cache_path, nrows=0).columns.tolist()
+            except Exception:
+                pass
+
         scores, sectors, seniority_matches, reasonings, skills_list, concerns_list = [], [], [], [], [], []
         cache_hits = 0
 
@@ -278,6 +285,8 @@ class JobAssessor:
                     "date_posted": row.get("date_posted", ""),
                     "description": row.get("description", ""),
                 }])
+                if existing_cols is not None:
+                    cache_row = cache_row.reindex(columns=existing_cols)
                 cache_row.to_csv(cache_path, mode="a", header=not cache_written, index=False)
                 cache_written = True
 
