@@ -269,6 +269,9 @@ def generate_html_report(
     if df.empty:
         return ""
 
+    if "fit_score" in df.columns:
+        df["fit_score"] = pd.to_numeric(df["fit_score"], errors="coerce").fillna(0).astype(int)
+
     sort_cols = []
     sort_asc = []
     if "assessed_at" in df.columns:
