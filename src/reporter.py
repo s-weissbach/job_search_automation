@@ -1,5 +1,8 @@
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_BASEL_TZ = ZoneInfo("Europe/Zurich")
 
 import pandas as pd
 
@@ -43,7 +46,7 @@ def save_results(df: pd.DataFrame, config: dict) -> str:
     results_dir = Path(config["output"]["results_dir"])
     results_dir.mkdir(exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(_BASEL_TZ).strftime("%Y%m%d_%H%M%S")
     output_path = results_dir / f"jobs_{timestamp}.csv"
 
     keep_cols = [

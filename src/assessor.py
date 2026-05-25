@@ -1,7 +1,10 @@
 import json
 import time
-from datetime import date
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_BASEL_TZ = ZoneInfo("Europe/Zurich")
 
 import pandas as pd
 import anthropic
@@ -266,7 +269,7 @@ class JobAssessor:
                     "fit_reasoning": result["reasoning"],
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
-                    "assessed_at": date.today().isoformat(),
+                    "assessed_at": datetime.now(_BASEL_TZ).date().isoformat(),
                     "is_active": "active",
                     "title": row.get("title", ""),
                     "company": row.get("company", ""),

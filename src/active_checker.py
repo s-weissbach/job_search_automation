@@ -1,7 +1,10 @@
 """Check whether past job URLs are still accessible (not 404/expired)."""
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_BASEL_TZ = ZoneInfo("Europe/Zurich")
 
 import pandas as pd
 import requests
@@ -68,7 +71,7 @@ def check_active_jobs(
     if "last_active_check" not in df.columns:
         df["last_active_check"] = ""
 
-    cutoff = (datetime.now() - timedelta(days=stale_days)).date()
+    cutoff = (datetime.now(_BASEL_TZ) - timedelta(days=stale_days)).date()
 
     def needs_check(row: pd.Series) -> bool:
         last = str(row.get("last_active_check", "")).strip()
