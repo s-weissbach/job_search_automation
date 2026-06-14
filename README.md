@@ -113,6 +113,26 @@ python run_search.py --check-active        # re-check old job URLs for liveness
 
 Results are saved to `results/jobs_YYYYMMDD_HHMMSS.csv` and `results/report.html`.
 
+## Cover letter generator
+
+A Streamlit app that generates a tailored cover letter draft using Claude, lets you edit every field, and exports a one-page A4 PDF.
+
+```bash
+streamlit run cover_letter_app.py
+```
+
+**Workflow:**
+1. Select your CV file (uses `cv/cv_compressed.yaml` if available, falls back to PDF/txt)
+2. Paste the job description — or pick a scored job directly from the score store dropdown
+3. Optionally add a draft or bullet points to guide Claude
+4. Click **Generate with Claude** — fills in the recipient address, subject, and letter body
+5. Edit any field: sender info, address block, date, subject, main text
+6. Click **Download PDF** — font auto-scales from 11 pt down to 9 pt to guarantee one page
+
+The PDF is regenerated live as you type, so the download button always reflects your latest edits.
+
+---
+
 ## GitHub Actions setup (automated weekly search)
 
 The included workflow (`.github/workflows/weekly_search.yml`) runs the search every Monday at 08:00 Basel time and can also be triggered manually.

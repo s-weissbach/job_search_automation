@@ -10,3 +10,5 @@ python-dotenv>=1.0
 tabulate>=0.9
 pandas>=2.0
 supabase>=2.0.0
+streamlit>=1.35.0
+fpdf2>=2.7.9
