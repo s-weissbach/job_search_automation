@@ -252,7 +252,13 @@ def _scrape_workday(
             resp = requests.post(
                 api_url,
                 json={"appliedFacets": {}, "limit": results_per_kw, "offset": 0, "searchText": kw},
-                headers={**_HEADERS, "Content-Type": "application/json"},
+                headers={
+                    **_HEADERS,
+                    "Content-Type": "application/json",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Origin": base_domain,
+                    "Referer": f"{base_domain}/{board}/",
+                },
                 timeout=15,
             )
             resp.raise_for_status()
