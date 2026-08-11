@@ -23,6 +23,20 @@ def load_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
+def _get_supabase_client():
+    """Best-effort Supabase client for alert dedup. Returns None if unconfigured/unreachable."""
+    url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return None
+    try:
+        from supabase import create_client
+        return create_client(url, key)
+    except Exception as e:
+        print(f"  Could not connect to Supabase for alert dedup: {e}")
+        return None
+
+
 def resolve_cv_path(explicit: str | None) -> str:
     if explicit:
         return explicit
@@ -76,6 +90,7 @@ def main() -> None:
     from src.reporter import print_summary, save_results
     from src.html_reporter import generate_html_report
     from src.active_checker import check_active_jobs
+    from src.alerter import send_high_score_alert
 
     results_dir = Path(config["output"]["results_dir"])
     results_dir.mkdir(exist_ok=True)
@@ -152,6 +167,9 @@ def main() -> None:
 
     output_path = save_results(scored_df, config)
     print(f"Full results ({len(scored_df)} jobs) saved to {output_path}")
+
+    print("\nChecking for high-score alerts...")
+    send_high_score_alert(scored_df, supabase_client=_get_supabase_client())
 
     scrape_cache.unlink(missing_ok=True)
     # score_store is intentionally kept — reused across future runs

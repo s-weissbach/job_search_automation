@@ -29,6 +29,10 @@ flowchart TD
     F  --> T["ranked table (terminal)"]
     F  --> CSV["results/jobs_TIMESTAMP.csv"]
     F  --> HTML["results/report.html"]
+
+    CL --> ALERT{"score > 90%?"}
+    ALERT -->|"yes, not yet alerted"| MAIL["Resend email\nto s.weissbach@outlook.com"]
+    ALERT -. "dedup" .-> JA[("job_alerts\nSupabase table")]
 ```
 
 Prompt caching means your CV is uploaded once per run — all subsequent assessments read it from cache at ~10× lower cost.
@@ -47,6 +51,7 @@ The **score store** persists across runs: jobs seen before are not re-assessed, 
 - **Prompt caching** — CV sent once per run; all assessments read from cache
 - **Resumable runs** — `--resume` continues interrupted runs without re-scraping or re-assessing
 - **Deduplication** — by URL and by title/company across all sources
+- **High-score alert emails** — sends you an email (via Resend) after each run listing every job scoring above 90%
 
 ## Local setup
 
@@ -169,6 +174,19 @@ create table if not exists job_scores (
 ```
 
 3. Note your **Project URL** and **service_role key** (Settings → API).
+4. If you want high-score alert emails (see below), also run:
+
+```sql
+create table if not exists job_alerts (
+    job_url text primary key,
+    alerted_at timestamptz not null default now()
+);
+```
+
+This tracks which jobs have already had an alert email sent, so re-running or
+retrying a workflow run never sends a duplicate. It's a separate table from
+the score store on purpose — if you skip this step, alert emails still send,
+just without duplicate protection across runs.
 
 ### 3. Add GitHub Actions secrets
 
@@ -181,6 +199,9 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 | `CV_YAML` | Full contents of `cv/cv_compressed.yaml` (run `--compress-cv` locally first) |
 | `SUPABASE_URL` | Your Supabase project URL (e.g. `https://xyz.supabase.co`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
+| `RESEND_API_KEY` | Optional — enables high-score alert emails. Same Resend account/API key used by the stephanweissbach.dev site. |
+| `JOB_ALERT_FROM_EMAIL` | Optional — sender for alert emails, e.g. `Job Search <onboarding@resend.dev>`. Defaults to that if unset. |
+| `JOB_ALERT_TO_EMAIL` | Optional — recipient for alert emails. Defaults to `s.weissbach@outlook.com` if unset. |
 
 > `CONFIG_YAML` and `CV_YAML` are multiline secrets — paste the full file content directly into the secret value field.
 
@@ -191,6 +212,23 @@ Go to **Actions** → **Weekly Job Search** → **Run workflow** to trigger a ma
 ### Skipping Supabase
 
 If you don't want Supabase, remove the two Supabase steps from `weekly_search.yml` and omit those two secrets. Scores will not persist between runs.
+
+## Score alert emails
+
+After each run, jobs from that run scoring **above 90%** are emailed to you in
+a single message (title, company, score, and link for each). This reuses the
+Resend account already wired up for the stephanweissbach.dev site — no new
+email provider.
+
+- Set `RESEND_API_KEY` (required) to enable it; without it, this step is a
+  silent no-op and the rest of the pipeline is unaffected.
+- `JOB_ALERT_FROM_EMAIL` / `JOB_ALERT_TO_EMAIL` are optional overrides (see
+  the secrets table above for defaults).
+- If zero jobs score above 90% that run, no email is sent.
+- Dedup is tracked in the `job_alerts` Supabase table (see step 4 of Supabase
+  setup above) so a re-run or retried workflow step never sends the same job
+  twice. Without that table, alerts still send but lose duplicate protection
+  across runs.
 
 ## Configuration reference
 
@@ -306,3 +344,9 @@ search:
 - Python 3.11+
 - Anthropic API key ([console.anthropic.com](https://console.anthropic.com))
 - CV as PDF or plain text
+
+## Testing
+
+```bash
+python -m unittest discover -s tests -v
+```
