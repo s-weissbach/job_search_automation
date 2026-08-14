@@ -53,7 +53,14 @@ def upload_score_store(score_store_path: str) -> int:
                 rec[col] = _to_date_or_none(rec[col])
 
     client = create_client(url, key)
-    client.table("job_results").upsert(records, on_conflict="job_url").execute()
+
+    # A single upsert of the full store can exceed ~17MB with long descriptions,
+    # which breaks the connection (httpx.WriteError: Broken pipe) — batch instead.
+    batch_size = 500
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        client.table("job_results").upsert(batch, on_conflict="job_url").execute()
+        print(f"  Uploaded batch {i // batch_size + 1}/{-(-len(records) // batch_size)} ({len(batch)} records)")
 
     print(f"Uploaded {len(records)} job records to Supabase.")
     return len(records)
