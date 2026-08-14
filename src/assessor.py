@@ -232,8 +232,9 @@ class JobAssessor:
         cache_hits = 0
 
         for i, (_, row) in enumerate(df.iterrows(), 1):
-            title = (row.get("title") or "Unknown")[:50]
-            company = (row.get("company") or "Unknown")[:30]
+            raw_title, raw_company = row.get("title"), row.get("company")
+            title = (raw_title if pd.notna(raw_title) and raw_title else "Unknown")[:50]
+            company = (raw_company if pd.notna(raw_company) and raw_company else "Unknown")[:30]
             url = str(row.get("job_url", ""))
 
             if url and url in cached:
