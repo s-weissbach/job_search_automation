@@ -34,6 +34,14 @@ assessment:
   # Points deducted from non-industry jobs (academia, government, nonprofit).
   # Set to 0 to disable. Use --clear-score-cache after changing this.
   industry_malus: 15
+  # Optional: sectors to never send for AI evaluation. Values: industry, academia,
+  # government, nonprofit, other. A company only enters the blacklist after its sector
+  # has been identified once (its first posting is still scored); every later posting
+  # from that same company is skipped without an API call.
+  # sector_blacklist:
+  #   - academia
+  #   - government
+  #   - nonprofit
 
 output:
   results_dir: "results"

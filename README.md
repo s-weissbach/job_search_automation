@@ -217,6 +217,7 @@ If you don't want Supabase, remove the two Supabase steps from `weekly_search.ym
 | `max_description_chars` | `4000` | Truncate job descriptions to this length |
 | `max_input_tokens` | `3000` | Skip jobs exceeding this token count (no API cost) |
 | `industry_malus` | `15` | Points deducted from non-industry jobs (academia, government, non-profit). Set to `0` to disable. Use `--clear-score-cache` after changing. |
+| `sector_blacklist` | *(none)* | Optional list of sectors (`industry`, `academia`, `government`, `nonprofit`, `other`) to never send for AI evaluation. A company's sector is only known after its first posting is scored — after that, later postings from the same company are skipped without an API call. |
 
 ### `output`
 

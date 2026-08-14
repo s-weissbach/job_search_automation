@@ -88,11 +88,13 @@ class JobAssessor:
         self.max_desc_chars = config.get("max_description_chars", 4000)
         self.max_input_tokens = config.get("max_input_tokens")
         self.industry_malus = config.get("industry_malus", _DEFAULT_INDUSTRY_MALUS)
+        self.sector_blacklist = set(config.get("sector_blacklist") or [])
         self._input_tokens = 0
         self._output_tokens = 0
         self._cache_tokens_read = 0
         self._cache_tokens_written = 0
         self._skipped = 0
+        self._blacklist_skipped = 0
 
         self._system = [
             {
@@ -199,6 +201,7 @@ class JobAssessor:
 
     def assess_all(self, df: pd.DataFrame, cache_path: str | None = None) -> pd.DataFrame:
         cached = {}
+        company_sector: dict[str, str] = {}
         if cache_path:
             p = Path(cache_path)
             if p.exists():
@@ -215,6 +218,11 @@ class JobAssessor:
                                 "matching_skills": str(crow["matching_skills"]) if pd.notna(crow.get("matching_skills")) else "",
                                 "concerns": str(crow["concerns"]) if pd.notna(crow.get("concerns")) else "",
                             }
+                        if self.sector_blacklist:
+                            crow_company = crow.get("company")
+                            crow_sector = crow.get("job_sector")
+                            if pd.notna(crow_company) and pd.notna(crow_sector) and str(crow_company).strip():
+                                company_sector[str(crow_company).strip().lower()] = str(crow_sector)
                     if cached:
                         print(f"  Score store: {len(cached)} previously assessed jobs loaded")
                 except Exception:
@@ -252,7 +260,22 @@ class JobAssessor:
 
             print(f"  [{i:>3}/{len(df)}] {title} @ {company}", end="... ", flush=True)
 
-            result = self._assess_one(row.to_dict())
+            company_key = company.strip().lower() if company != "Unknown" else None
+            blacklisted_sector = company_sector.get(company_key) if company_key else None
+
+            if blacklisted_sector in self.sector_blacklist:
+                print(f"skipped (blacklisted: {blacklisted_sector})")
+                self._blacklist_skipped += 1
+                result = {
+                    "score": -1,
+                    "job_sector": blacklisted_sector,
+                    "seniority_match": "unclear",
+                    "reasoning": f"Skipped: company sector blacklisted ({blacklisted_sector}).",
+                    "matching_skills": [],
+                    "concerns": [],
+                }
+            else:
+                result = self._assess_one(row.to_dict())
             raw_score = result["score"]
             sector = result.get("job_sector", "other")
             adjusted_score = self._apply_malus(raw_score, sector)
@@ -305,6 +328,8 @@ class JobAssessor:
             print(f"  Score store: {cache_hits} jobs reused from previous runs (0 tokens)")
         if self._skipped:
             print(f"  Skipped {self._skipped} jobs (exceeded max_input_tokens)")
+        if self._blacklist_skipped:
+            print(f"  Skipped {self._blacklist_skipped} jobs (sector blacklist)")
 
         out = df.copy()
         out["fit_score"] = scores
