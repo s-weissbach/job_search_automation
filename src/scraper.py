@@ -1,5 +1,7 @@
 import pandas as pd
 
+from src.text_utils import clean_description
+
 
 def scrape_jobs(config: dict) -> pd.DataFrame:
     search_cfg = config["search"]
@@ -25,6 +27,8 @@ def scrape_jobs(config: dict) -> pd.DataFrame:
     combined = pd.concat(results, ignore_index=True)
     combined = combined.drop_duplicates(subset=["job_url"], keep="first")
     combined = combined.drop_duplicates(subset=["title", "company"], keep="first")
+    if "description" in combined.columns:
+        combined["description"] = combined["description"].apply(clean_description)
     return combined
 
 

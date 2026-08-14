@@ -7,6 +7,8 @@ _BASEL_TZ = ZoneInfo("Europe/Zurich")
 import pandas as pd
 import requests
 
+from src.text_utils import clean_description
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -95,7 +97,7 @@ def _row(title, company, location, url, description, site, date_posted=None):
         "company": company or "",
         "location": location or "",
         "job_url": url or "",
-        "description": description or "",
+        "description": clean_description(description),
         "site": site,
         "date_posted": date_posted,
         "is_remote": None,
