@@ -71,6 +71,7 @@ def main() -> None:
     import anthropic
     from src.scraper import scrape_jobs
     from src.portal_scraper import scrape_portals
+    from src.pharmajob_client import fetch_pharmajob_jobs, covered_companies, exclude_covered_companies
     from src.cv_processor import load_cv, compress_cv, save_compressed_cv
     from src.assessor import JobAssessor
     from src.reporter import print_summary, save_results
@@ -116,14 +117,40 @@ def main() -> None:
 
         print(f"Found {len(jobs_df)} unique jobs from job boards")
 
+        pharmajob_df, covered = pd.DataFrame(), set()
+        if config.get("pharmajob_io", {}).get("enabled"):
+            print("\nQuerying pharmajob.io...")
+            pharmajob_df = fetch_pharmajob_jobs(config)
+            if not pharmajob_df.empty:
+                covered = covered_companies(pharmajob_df)
+                before = len(jobs_df)
+                jobs_df = exclude_covered_companies(
+                    jobs_df, covered, near_miss_log=str(results_dir / ".pharmajob_near_misses.csv")
+                )
+                print(f"  pharmajob.io covers {len(covered)} companies this run — excluded {before - len(jobs_df)} job-board rows")
+            else:
+                print("  pharmajob.io returned 0 jobs — continuing without exclusion filter")
+
         if config.get("company_portals"):
             print("\nScraping company portals...")
             portal_df = scrape_portals(config)
             if not portal_df.empty:
+                if covered:
+                    before = len(portal_df)
+                    portal_df = exclude_covered_companies(
+                        portal_df, covered, near_miss_log=str(results_dir / ".pharmajob_near_misses.csv")
+                    )
+                    print(f"  Excluded {before - len(portal_df)} company_portals rows already covered by pharmajob.io")
                 jobs_df = pd.concat([jobs_df, portal_df], ignore_index=True)
                 jobs_df = jobs_df.drop_duplicates(subset=["job_url"], keep="first")
                 jobs_df = jobs_df.drop_duplicates(subset=["title", "company"], keep="first")
                 print(f"Total after portals: {len(jobs_df)} unique jobs")
+
+        if not pharmajob_df.empty:
+            jobs_df = pd.concat([jobs_df, pharmajob_df], ignore_index=True)
+            jobs_df = jobs_df.drop_duplicates(subset=["job_url"], keep="first")
+            jobs_df = jobs_df.drop_duplicates(subset=["title", "company"], keep="first")
+            print(f"Total after pharmajob.io: {len(jobs_df)} unique jobs")
 
         jobs_df.to_csv(scrape_cache, index=False)
 

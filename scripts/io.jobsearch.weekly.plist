@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly local job search, every Monday 05:00. Install:
+      cp scripts/io.jobsearch.weekly.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.jobsearch.weekly.plist
+  Remove with:
+      launchctl bootout gui/$(id -u)/io.jobsearch.weekly
+
+  NOTE: this repo must NOT live under ~/Desktop, ~/Documents, or ~/Downloads.
+  launchd invokes /bin/bash directly (not Terminal.app), and macOS TCC blocks
+  that process from even getcwd()-ing into those folders, so the job fails
+  with exit 126 before the script body runs. (Hit this on 2026-08-17.)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.jobsearch.weekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/stephanweissbach/Projects/job_search_automation/scripts/run_local.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation</string>
+
+    <!-- Monday 05:00 — scheduled well after pharmajob.io's nightly scrape
+         (01:00, historically completes ~03:46-03:53) so the DB is normally
+         already fresh with zero wait. The pharmajob_io.freshness_marker
+         check in src/pharmajob_client.py is the actual safety net for a
+         slow night; this time just keeps that wait short in practice.
+         launchd re-fires a missed run on wake; cron does not. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>5</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation/logs/launchd.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Scraping + scoring can run long; don't let launchd treat it as hung. -->
+    <key>ExitTimeOut</key>
+    <integer>0</integer>
+</dict>
+</plist>

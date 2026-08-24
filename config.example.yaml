@@ -21,8 +21,13 @@ search:
   #   "Basel": "Switzerland"
 
 assessment:
-  # claude-haiku-4-5: fastest and cheapest (~$0.001 per run of 50 jobs)
-  # claude-sonnet-4-6: higher quality, prompt caching activates at >2048 token CV
+  # claude-haiku-4-5: fastest and cheapest (~$0.07 per run of 50 new jobs,
+  # scored via the Anthropic Message Batches API — a flat 50% off standard
+  # rates; already-scored jobs are free on every later run, see score store
+  # below). claude-sonnet-4-6: higher quality, same batch discount applies.
+  # (Prompt caching does not add further savings under the Batches API —
+  # batch requests run in parallel with no cache write-then-read ordering
+  # guarantee, so cache_control on the system prompt has no effect here.)
   model: "claude-haiku-4-5"
   # Model used for the one-time CV compression step
   compression_model: "claude-sonnet-4-6"
@@ -45,6 +50,26 @@ assessment:
 
 output:
   results_dir: "results"
+
+# Optional: pull big-pharma postings from a local pharmajob.io instance
+# (a companion project — github.com/s-weissbach/pharmajob.io) instead of
+# scraping the same companies again via LinkedIn/Indeed/company_portals.
+# Leave enabled: false (or delete this block) if you don't also run that
+# project — nothing else in this pipeline changes. Every job, regardless
+# of source, still goes through the same AI fit-scoring below.
+pharmajob_io:
+  enabled: false
+  base_url: "http://localhost:8000"
+  timeout_seconds: 15
+  page_size: 100      # pharmajob.io's GET /jobs caps this at 100 server-side
+  max_pages: 5        # per (keyword, location) pair
+  # Optional: if pharmajob.io's nightly scraper touches a marker file on
+  # successful completion, set its path here and this pipeline will wait
+  # (bounded) for it to be from today before querying — safe even if the
+  # two schedules land close together. Leave unset to query immediately.
+  # freshness_marker: "/path/to/pharmajob.io/.last_scrape_complete"
+  freshness_max_wait_minutes: 30
+  freshness_poll_seconds: 120
 
 # Direct company portal scraping via Greenhouse/Lever JSON APIs and Workday CXS API.
 company_portals:
