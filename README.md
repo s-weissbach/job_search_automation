@@ -133,13 +133,13 @@ The PDF is regenerated live as you type, so the download button always reflects 
 
 ---
 
-## GitHub Actions setup (automated weekly search)
+## GitHub Actions setup (automated daily search)
 
-The included workflow (`.github/workflows/weekly_search.yml`) runs the search every Monday at 08:00 Basel time and can also be triggered manually.
+The included workflow (`.github/workflows/daily_search.yml`) runs the search every day at 05:00 Basel time and can also be triggered manually.
 
 ### 1. Fork or copy the repository
 
-Make sure `.github/workflows/weekly_search.yml` is present.
+Make sure `.github/workflows/daily_search.yml` is present.
 
 ### 2. Set up Supabase (optional but recommended)
 
@@ -186,11 +186,11 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 
 ### 4. Trigger a test run
 
-Go to **Actions** → **Weekly Job Search** → **Run workflow** to trigger a manual run and verify everything works.
+Go to **Actions** → **Daily Job Search** → **Run workflow** to trigger a manual run and verify everything works.
 
 ### Skipping Supabase
 
-If you don't want Supabase, remove the two Supabase steps from `weekly_search.yml` and omit those two secrets. Scores will not persist between runs.
+If you don't want Supabase, remove the two Supabase steps from `daily_search.yml` and omit those two secrets. Scores will not persist between runs.
 
 ## Configuration reference
 

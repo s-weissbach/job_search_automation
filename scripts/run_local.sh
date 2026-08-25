@@ -1,5 +1,5 @@
 #!/bin/bash
-# Weekly local job search run: replaces the GitHub Actions schedule.
+# Daily local job search run: replaces the GitHub Actions schedule.
 # Mirrors the old workflow's steps: restore score cache from Supabase, run the
 # search, then push results back to Supabase so the website reflects this run.
 set -uo pipefail
@@ -23,7 +23,7 @@ LOG="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S).log"
 
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== job_search_automation weekly run $(date) ==="
+echo "=== job_search_automation daily run $(date) ==="
 
 set -a
 source .env
