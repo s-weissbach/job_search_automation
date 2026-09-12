@@ -68,7 +68,7 @@ class JobPrefilterTests(unittest.TestCase):
         self.assertFalse(german_postdoc.accepted)
         self.assertEqual(german_postdoc.reason, "too_junior")
 
-    def test_rejects_staff_role_with_explicit_people_leadership_gap(self):
+    def test_keeps_staff_seniority_gap_for_model_judgment(self):
         decision = evaluate_job({
             "title": "Staff AI/ML Engineer - Controllable Biology",
             "company": "GSK",
