@@ -71,6 +71,15 @@ _MANAGEMENT_TITLE_PATTERNS = (
     r"\bdirector\b", r"\bexecutive\b",
 )
 
+_SENIOR_IC_TITLE_PATTERNS = (
+    r"\bstaff\b", r"\bprincipal\b", r"\btechnical lead\b", r"\bteam lead\b",
+)
+
+_PEOPLE_LEADERSHIP_PATTERNS = (
+    r"direct reports?", r"people management", r"engineering manager",
+    r"manag(?:e|ing) (?:an? |the )?(?:engineering|scientific|data|machine learning|ai/ml)? ?team",
+)
+
 _NONINDUSTRY_COMPANY_PATTERNS = (
     r"\buniversity\b", r"\buniversit", r"\bhochschule\b", r"\bcollege\b",
     r"\bmax planck\b", r"\bhelmholtz\b", r"\bembl\b", r"\bnhs\b",
@@ -152,6 +161,14 @@ def evaluate_job(job: dict, known_company_sector: str | None, config: dict) -> P
     if config.get("exclude_management_roles", True):
         if management := _matches(_MANAGEMENT_TITLE_PATTERNS, title):
             return PrefilterDecision(False, 0, "too_senior_management", tuple(management))
+
+    if config.get("exclude_explicit_seniority_mismatches", True):
+        years = [int(value) for value in re.findall(r"\b(\d{1,2})\s*\+?\s*years", description, re.IGNORECASE)]
+        senior_title = _matches(_SENIOR_IC_TITLE_PATTERNS, title)
+        leadership = _matches(_PEOPLE_LEADERSHIP_PATTERNS, description)
+        if senior_title and leadership and any(value >= 5 for value in years):
+            signals = senior_title + leadership + [f"{max(years)}+ years"]
+            return PrefilterDecision(False, 0, "too_senior_requirements", tuple(signals))
 
     strong_patterns = _STRONG_TITLE_PATTERNS + _extra_patterns(config, "extra_strong_title_patterns")
     domain_patterns = _DOMAIN_PATTERNS + _extra_patterns(config, "extra_domain_patterns")

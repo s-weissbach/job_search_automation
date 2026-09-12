@@ -56,6 +56,19 @@ class JobPrefilterTests(unittest.TestCase):
         self.assertFalse(academic.accepted)
         self.assertEqual(academic.reason, "obvious_nonindustry_employer")
 
+    def test_rejects_staff_role_with_explicit_people_leadership_gap(self):
+        decision = evaluate_job({
+            "title": "Staff AI/ML Engineer - Controllable Biology",
+            "company": "GSK",
+            "description": (
+                "Apply machine learning to genomics and single-cell data. "
+                "Requires 7+ years of deep learning and 5+ years as an engineering "
+                "manager with direct reports."
+            ),
+        }, "industry", CONFIG)
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "too_senior_requirements")
+
     def test_url_normalization_preserves_job_identifiers(self):
         url = "https://example.com/jobs/view?jk=abc&utm_source=mail&ref=feed"
         self.assertEqual(canonical_job_url(url), "https://example.com/jobs/view?jk=abc")

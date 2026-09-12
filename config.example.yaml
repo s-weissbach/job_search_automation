@@ -61,6 +61,7 @@ prefilter:
   exclude_obvious_nonindustry: true
   exclude_junior_roles: true
   exclude_management_roles: true
+  exclude_explicit_seniority_mismatches: true
   # Optional regular expressions for personal tuning:
   extra_strong_title_patterns: []
   extra_domain_patterns: []

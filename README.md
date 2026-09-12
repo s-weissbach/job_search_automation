@@ -239,6 +239,7 @@ If you don't want Supabase, remove the two Supabase steps from `daily_search.yml
 | `exclude_obvious_nonindustry` | `true` | Reject obvious university, institute, NHS, and government employers |
 | `exclude_junior_roles` | `true` | Reject intern, student, PhD, trainee, and postdoc roles |
 | `exclude_management_roles` | `true` | Reject director, head, VP, chief, and executive roles |
+| `exclude_explicit_seniority_mismatches` | `true` | Reject Staff/Principal/lead roles that explicitly combine 5+ years with people-management requirements |
 
 ### `output`
 
