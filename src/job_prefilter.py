@@ -1,8 +1,8 @@
-"""Deterministic relevance filtering before any LLM job assessment.
+"""Recall-first deterministic filtering before any LLM job assessment.
 
 The search providers are intentionally broad and can return hundreds of jobs
-that merely mention one query term. This module keeps obvious mismatches away
-from the model while retaining an audit trail so the rules can be tuned.
+that merely mention one query term. This module rejects only obvious mismatches,
+while sending both clear and plausible-borderline roles to the model.
 """
 
 from __future__ import annotations
@@ -50,20 +50,30 @@ _GENERIC_TECHNICAL_TITLE_PATTERNS = (
     r"research scientist", r"computational", r"biostatistic",
 )
 
-_EXCLUDED_TITLE_PATTERNS = (
+_ALWAYS_EXCLUDED_TITLE_PATTERNS = (
     r"\bsales\b", r"account manager", r"business development", r"marketing",
     r"customer (?:success|experience)", r"product manager", r"project manager",
     r"program manager", r"medical director", r"medical advisor", r"physician",
+    r"chief medical officer", r"\bcmo\b", r"\bprofessor(?:ship)?\b",
     r"quality (?:control|assurance)", r"\bqc\b", r"regulatory", r"manufactur",
+    r"partnership manager", r"legal counsel", r"meteorologist", r"field application",
+)
+
+_CONDITIONAL_TECHNICAL_TITLE_PATTERNS = (
     r"full[- ]?stack", r"front[- ]?end", r"cloud developer", r"\.net developer",
-    r"software engineer", r"solutions architect", r"partnership manager",
-    r"legal counsel", r"meteorologist", r"field application",
+    r"software engineer", r"solutions architect",
+)
+
+_SCIENTIFIC_OR_ANALYTICAL_TITLE_PATTERNS = (
+    r"scientist", r"research", r"engineer", r"analyst", r"architect",
+    r"statistic", r"computational", r"informatics", r"data", r"\bai\b", r"\bml\b",
 )
 
 _JUNIOR_TITLE_PATTERNS = (
     r"\bintern(?:ship)?\b", r"working student", r"\bstudent\b", r"\bph\.?d\.?\b",
     r"doctoral (?:student|candidate|position)", r"graduate programme", r"\btrainee\b",
-    r"\bpost[ -]?doc(?:toral)?\b",
+    r"\bpost[ -]?doc(?:toral)?\b", r"\bpostdoktor", r"\bdoktorand",
+    r"\bpromotion\b", r"industrial placement",
 )
 
 _MANAGEMENT_TITLE_PATTERNS = (
@@ -126,12 +136,13 @@ class PrefilterDecision:
     score: int
     reason: str
     signals: tuple[str, ...]
+    tier: str = "rejected"
 
 
 def evaluate_job(job: dict, known_company_sector: str | None, config: dict) -> PrefilterDecision:
-    """Return a conservative, explainable relevance decision for one job."""
+    """Return an explainable, recall-first relevance decision for one job."""
     if not config.get("enabled", True):
-        return PrefilterDecision(True, 0, "prefilter_disabled", ())
+        return PrefilterDecision(True, 0, "prefilter_disabled", (), "strong")
 
     title = str(job.get("title") or "").strip()
     company = str(job.get("company") or "").strip()
@@ -139,36 +150,9 @@ def evaluate_job(job: dict, known_company_sector: str | None, config: dict) -> P
     max_chars = int(config.get("max_description_chars", 8000))
     text = f"{title}\n{description[:max_chars]}"
 
-    if config.get("exclude_known_nonindustry", True) and known_company_sector in {
-        "academia", "government", "nonprofit"
-    }:
-        return PrefilterDecision(False, 0, f"known_{known_company_sector}", ())
-
     nonindustry_patterns = _NONINDUSTRY_COMPANY_PATTERNS + _extra_patterns(
         config, "extra_nonindustry_company_patterns"
     )
-    if config.get("exclude_obvious_nonindustry", True) and _matches(nonindustry_patterns, company):
-        return PrefilterDecision(False, 0, "obvious_nonindustry_employer", ())
-
-    excluded_patterns = _EXCLUDED_TITLE_PATTERNS + _extra_patterns(config, "extra_excluded_title_patterns")
-    if excluded := _matches(excluded_patterns, title):
-        return PrefilterDecision(False, 0, "excluded_title", tuple(excluded))
-
-    if config.get("exclude_junior_roles", True):
-        if junior := _matches(_JUNIOR_TITLE_PATTERNS, title):
-            return PrefilterDecision(False, 0, "too_junior", tuple(junior))
-
-    if config.get("exclude_management_roles", True):
-        if management := _matches(_MANAGEMENT_TITLE_PATTERNS, title):
-            return PrefilterDecision(False, 0, "too_senior_management", tuple(management))
-
-    if config.get("exclude_explicit_seniority_mismatches", True):
-        years = [int(value) for value in re.findall(r"\b(\d{1,2})\s*\+?\s*years", description, re.IGNORECASE)]
-        senior_title = _matches(_SENIOR_IC_TITLE_PATTERNS, title)
-        leadership = _matches(_PEOPLE_LEADERSHIP_PATTERNS, description)
-        if senior_title and leadership and any(value >= 5 for value in years):
-            signals = senior_title + leadership + [f"{max(years)}+ years"]
-            return PrefilterDecision(False, 0, "too_senior_requirements", tuple(signals))
 
     strong_patterns = _STRONG_TITLE_PATTERNS + _extra_patterns(config, "extra_strong_title_patterns")
     domain_patterns = _DOMAIN_PATTERNS + _extra_patterns(config, "extra_domain_patterns")
@@ -176,6 +160,11 @@ def evaluate_job(job: dict, known_company_sector: str | None, config: dict) -> P
     domain_hits = _matches(domain_patterns, text)
     support_hits = _matches(_SUPPORT_PATTERNS, text)
     generic_title = bool(_matches(_GENERIC_TECHNICAL_TITLE_PATTERNS, title))
+    scientific_title = bool(_matches(_SCIENTIFIC_OR_ANALYTICAL_TITLE_PATTERNS, title))
+    conditional_technical = _matches(_CONDITIONAL_TECHNICAL_TITLE_PATTERNS, title)
+    management = _matches(_MANAGEMENT_TITLE_PATTERNS, title)
+    obvious_nonindustry = _matches(nonindustry_patterns, company)
+    known_nonindustry = known_company_sector in {"academia", "government", "nonprofit"}
 
     score = min(len(strong_hits), 2) * 7
     score += min(len(domain_hits), 6) * 2
@@ -183,13 +172,68 @@ def evaluate_job(job: dict, known_company_sector: str | None, config: dict) -> P
     if strong_hits:
         score += 2
 
-    if not strong_hits and len(domain_hits) < 2:
-        reason = "generic_without_domain_evidence" if generic_title else "weak_domain_evidence"
-        return PrefilterDecision(False, score, reason, tuple(domain_hits + support_hits))
+    context_signals: list[str] = []
+    if known_nonindustry:
+        context_signals.append(f"sector:{known_company_sector}")
+    elif obvious_nonindustry:
+        context_signals.append("sector:likely_nonindustry")
+    signals = tuple(strong_hits + domain_hits + support_hits + context_signals)
+
+    excluded_patterns = _ALWAYS_EXCLUDED_TITLE_PATTERNS + _extra_patterns(
+        config, "extra_excluded_title_patterns"
+    )
+    if excluded := _matches(excluded_patterns, title):
+        return PrefilterDecision(False, score, "definite_title_mismatch", tuple(excluded) + signals)
+
+    if config.get("exclude_junior_roles", True):
+        if junior := _matches(_JUNIOR_TITLE_PATTERNS, title):
+            return PrefilterDecision(False, score, "too_junior", tuple(junior) + signals)
+
+    if config.get("exclude_known_nonindustry", False) and known_nonindustry:
+        return PrefilterDecision(False, score, f"known_{known_company_sector}", signals)
+
+    if config.get("exclude_obvious_nonindustry", False) and obvious_nonindustry:
+        return PrefilterDecision(False, score, "obvious_nonindustry_employer", signals)
+
+    if config.get("exclude_management_roles", False) and management:
+        return PrefilterDecision(False, score, "too_senior_management", tuple(management) + signals)
+
+    years = [int(value) for value in re.findall(r"\b(\d{1,2})\s*\+?\s*years", description, re.IGNORECASE)]
+    senior_title = _matches(_SENIOR_IC_TITLE_PATTERNS, title)
+    leadership = _matches(_PEOPLE_LEADERSHIP_PATTERNS, description)
+    explicit_seniority_gap = bool(
+        senior_title and leadership and any(value >= 5 for value in years)
+    )
+    if config.get("exclude_explicit_seniority_mismatches", False) and explicit_seniority_gap:
+        gap_signals = tuple(senior_title + leadership + [f"{max(years)}+ years"])
+        return PrefilterDecision(False, score, "too_senior_requirements", gap_signals + signals)
+
+    if not strong_hits and not domain_hits:
+        if conditional_technical:
+            reason = "unrelated_technical_title"
+        elif management:
+            reason = "management_without_domain_evidence"
+        else:
+            reason = "generic_without_biological_evidence" if generic_title else "weak_domain_evidence"
+        return PrefilterDecision(False, score, reason, signals)
 
     minimum = int(config.get("min_relevance_score", 7))
-    if score < minimum:
-        return PrefilterDecision(False, score, "below_relevance_threshold", tuple(domain_hits + support_hits))
+    is_strong = bool(strong_hits) or (len(domain_hits) >= 2 and score >= minimum)
+    needs_model_judgment = bool(conditional_technical or management or explicit_seniority_gap)
 
-    signals = tuple(strong_hits + domain_hits + support_hits)
-    return PrefilterDecision(True, score, "candidate", signals)
+    if is_strong and not needs_model_judgment:
+        return PrefilterDecision(True, score, "strong_candidate", signals, "strong")
+
+    # One explicit biological/domain signal is enough for the recall-first
+    # borderline queue when the role is scientific, analytical, or technical.
+    if domain_hits and (scientific_title or support_hits or strong_hits):
+        reason = "borderline_candidate"
+        if conditional_technical:
+            reason = "borderline_technical_with_domain"
+        elif management:
+            reason = "borderline_management_with_domain"
+        elif explicit_seniority_gap:
+            reason = "borderline_seniority_gap"
+        return PrefilterDecision(True, score, reason, signals, "borderline")
+
+    return PrefilterDecision(False, score, "weak_domain_evidence", signals)

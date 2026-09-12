@@ -39,11 +39,11 @@ The **score store** persists across runs: jobs seen before are not re-assessed, 
 - **Company portals** — Workday (CXS API), SAP SuccessFactors (HTML), Greenhouse (JSON API), Lever (JSON API)
 - **Location filtering** — country names, ISO 3166 codes, and configurable city overrides
 - **Local AI fit scoring** — GPT-5.6 Luna scores shortlisted jobs 0–100% through the saved Codex/ChatGPT login
-- **Pre-model relevance gate** — rejects generic, sales, student, management, and known non-industry roles before model use, with a reviewable audit CSV
+- **Recall-first relevance gate** — rejects only clear mismatches, sends plausible borderline roles to the model, and keeps a reviewable audit CSV
 - **Industry preference** — configurable score penalty for academia / government / non-profit postings
 - **Persistent score cache** — jobs are not re-assessed across runs; scores accumulate over time
 - **HTML report** — self-contained `results/report.html` with filter bar (score, seniority, site, NEW badge)
-- **Daily capacity guard** — sends at most 80 ranked new candidates to the model and defers overflow
+- **Daily capacity guard** — sends at most 40 ranked jobs, including five rotating recall-audit samples, and defers candidate overflow
 - **Resumable runs** — `--resume` continues interrupted runs without re-scraping or re-assessing
 - **Deduplication** — by URL and by title/company across all sources
 
@@ -120,7 +120,7 @@ scripts/run_codex_local.sh
 JOB_SEARCH_RESUME=1 scripts/run_codex_local.sh
 ```
 
-The prefilter writes `results/prefilter_audit_latest.csv` and a dated audit copy. Rejected jobs remain visible there for tuning. The launch agent runs this script every day at 05:00 Basel time.
+The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The launch agent runs this script every day at 05:00 Basel time.
 
 ## Cover letter generator
 
@@ -234,12 +234,13 @@ If you don't want Supabase, remove the two Supabase steps from `daily_search.yml
 |---|---|---|
 | `enabled` | `true` | Apply deterministic relevance filtering before model scoring |
 | `min_relevance_score` | `7` | Minimum explainable lexical/domain relevance score |
-| `max_llm_jobs` | `80` | Maximum number of new jobs scored in one daily run; overflow is deferred |
-| `exclude_known_nonindustry` | `true` | Reject companies previously identified as academia, government, or nonprofit |
-| `exclude_obvious_nonindustry` | `true` | Reject obvious university, institute, NHS, and government employers |
+| `max_llm_jobs` | `40` | Maximum total jobs scored daily; candidate overflow is deferred |
+| `recall_audit_sample_size` | `5` | High-signal rejects sampled daily to detect false-negative gate rules |
+| `exclude_known_nonindustry` | `false` | Optional strict mode: reject companies previously identified as academia, government, or nonprofit |
+| `exclude_obvious_nonindustry` | `false` | Optional strict mode: reject obvious university, institute, NHS, and government employers |
 | `exclude_junior_roles` | `true` | Reject intern, student, PhD, trainee, and postdoc roles |
-| `exclude_management_roles` | `true` | Reject director, head, VP, chief, and executive roles |
-| `exclude_explicit_seniority_mismatches` | `true` | Reject Staff/Principal/lead roles that explicitly combine 5+ years with people-management requirements |
+| `exclude_management_roles` | `false` | Optional strict mode: reject director, head, VP, chief, and executive roles |
+| `exclude_explicit_seniority_mismatches` | `false` | Optional strict mode: reject Staff/Principal/lead roles that combine 5+ years with people management |
 
 ### `output`
 

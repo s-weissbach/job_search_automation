@@ -35,6 +35,13 @@ def _job_id(url: str, ordinal: int) -> str:
     return "job-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
+def _daily_sample_key(job: dict, date_key: str) -> str:
+    identity = job.get("job_url") or normalized_identity(
+        job.get("title"), job.get("company"), job.get("location")
+    )
+    return hashlib.sha256(f"{date_key}|{identity}".encode("utf-8")).hexdigest()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
@@ -65,6 +72,7 @@ def main() -> None:
     seen_urls: set[str] = set()
     seen_identities: set[str] = set()
     candidates: list[dict] = []
+    rejected_pool: list[dict] = []
     audit: list[dict] = []
     skipped_cached = 0
     skipped_duplicate = 0
@@ -87,38 +95,72 @@ def main() -> None:
 
         company = str(raw.get("company") or "").strip().casefold()
         decision = evaluate_job(raw, company_sectors.get(company), prefilter_config)
+        raw["job_id"] = _job_id(url, ordinal)
+        raw["prefilter_score"] = decision.score
+        raw["prefilter_reason"] = decision.reason
+        raw["prefilter_signals"] = list(decision.signals)
+        raw["prefilter_tier"] = decision.tier
         audit_row = {
+            "job_id": raw["job_id"],
             "job_url": raw.get("job_url"),
             "title": raw.get("title"),
             "company": raw.get("company"),
             "location": raw.get("location"),
             "date_posted": raw.get("date_posted"),
             "prefilter_score": decision.score,
-            "prefilter_decision": "candidate" if decision.accepted else "rejected",
+            "prefilter_decision": decision.tier if decision.accepted else "rejected",
             "prefilter_reason": decision.reason,
             "prefilter_signals": "; ".join(decision.signals),
         }
         audit.append(audit_row)
         if decision.accepted:
-            raw["job_id"] = _job_id(url, ordinal)
-            raw["prefilter_score"] = decision.score
-            raw["prefilter_signals"] = list(decision.signals)
             candidates.append(raw)
+        else:
+            rejected_pool.append(raw)
 
     candidates.sort(
-        key=lambda job: (int(job.get("prefilter_score") or 0), str(job.get("date_posted") or "")),
+        key=lambda job: (
+            1 if job.get("prefilter_tier") == "strong" else 0,
+            int(job.get("prefilter_score") or 0),
+            str(job.get("date_posted") or ""),
+        ),
         reverse=True,
     )
-    max_jobs = int(prefilter_config.get("max_llm_jobs", 80))
-    selected = candidates[:max_jobs]
+    max_jobs = int(prefilter_config.get("max_llm_jobs", 40))
+    sample_size = min(int(prefilter_config.get("recall_audit_sample_size", 5)), max_jobs)
+
+    recall_reasons = set(prefilter_config.get("recall_audit_reasons") or (
+        "generic_without_biological_evidence",
+        "weak_domain_evidence",
+        "unrelated_technical_title",
+        "management_without_domain_evidence",
+    ))
+    date_key = datetime.now(BASEL_TZ).date().isoformat()
+    recall_pool = [job for job in rejected_pool if job.get("prefilter_reason") in recall_reasons]
+    recall_pool.sort(
+        key=lambda job: (
+            -int(job.get("prefilter_score") or 0),
+            _daily_sample_key(job, date_key),
+        )
+    )
+    recall_samples = recall_pool[:sample_size]
+    for job in recall_samples:
+        job["prefilter_tier"] = "recall_sample"
+
+    candidate_capacity = max(0, max_jobs - len(recall_samples))
+    selected_candidates = candidates[:candidate_capacity]
+    selected = selected_candidates + recall_samples
     selected_ids = {job["job_id"] for job in selected}
-    candidate_by_url = {job.get("job_url"): job for job in candidates}
+    candidate_by_id = {job["job_id"]: job for job in candidates}
+    sample_ids = {job["job_id"] for job in recall_samples}
 
     for row in audit:
-        matching = candidate_by_url.get(row["job_url"])
+        matching = candidate_by_id.get(row["job_id"])
         if matching and matching["job_id"] not in selected_ids:
             row["prefilter_decision"] = "deferred"
             row["prefilter_reason"] = "daily_capacity"
+        elif row["job_id"] in sample_ids:
+            row["prefilter_decision"] = "recall_sample"
 
     queue_path = Path(args.queue)
     queue_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,6 +176,8 @@ def main() -> None:
                 "job_url": job.get("job_url"),
                 "description": str(job.get("description") or "")[:max_description_chars],
                 "prefilter_score": job.get("prefilter_score"),
+                "prefilter_tier": job.get("prefilter_tier"),
+                "prefilter_reason": job.get("prefilter_reason"),
                 "prefilter_signals": job.get("prefilter_signals"),
             }
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -154,7 +198,10 @@ def main() -> None:
         "duplicates": skipped_duplicate,
         "unscored_considered": len(audit),
         "selected": len(selected),
-        "deferred": max(0, len(candidates) - len(selected)),
+        "selected_strong": sum(job.get("prefilter_tier") == "strong" for job in selected),
+        "selected_borderline": sum(job.get("prefilter_tier") == "borderline" for job in selected),
+        "recall_samples": len(recall_samples),
+        "deferred": max(0, len(candidates) - len(selected_candidates)),
         "rejected": sum(row["prefilter_decision"] == "rejected" for row in audit),
         "reason_counts": reason_counts,
     }
