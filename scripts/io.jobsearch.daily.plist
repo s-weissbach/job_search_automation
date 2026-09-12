@@ -20,7 +20,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/stephanweissbach/Projects/job_search_automation/scripts/run_local.sh</string>
+        <string>/Users/stephanweissbach/Projects/job_search_automation/scripts/run_codex_local.sh</string>
     </array>
 
     <key>WorkingDirectory</key>

@@ -1,8 +1,8 @@
 name: Daily Job Search
 
 on:
-  schedule:
-    - cron: '0 3 * * *'  # Every day at 05:00 Basel time (CEST/UTC+2)
+  # Intentionally manual-only. The daily production run executes locally on
+  # Stephan's Mac via launchd and scripts/run_codex_local.sh.
   workflow_dispatch:
 
 jobs:

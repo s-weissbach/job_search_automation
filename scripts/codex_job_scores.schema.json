@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "properties": {
+    "assessments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 80,
+      "items": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" },
+          "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "job_sector": {
+            "type": "string",
+            "enum": ["industry", "academia", "government", "nonprofit", "other"]
+          },
+          "seniority_match": {
+            "type": "string",
+            "enum": ["too_junior", "match", "too_senior", "unclear"]
+          },
+          "reasoning": { "type": "string" },
+          "matching_skills": {
+            "type": "array",
+            "maxItems": 6,
+            "items": { "type": "string" }
+          },
+          "concerns": {
+            "type": "array",
+            "maxItems": 6,
+            "items": { "type": "string" }
+          }
+        },
+        "required": [
+          "job_id", "score", "job_sector", "seniority_match", "reasoning",
+          "matching_skills", "concerns"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["assessments"],
+  "additionalProperties": false
+}

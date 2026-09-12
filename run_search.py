@@ -49,7 +49,7 @@ def main() -> None:
         "--compress-cv", action="store_true",
         help="Compress CV to token-efficient YAML using Claude, save to cv/cv_compressed.yaml"
     )
-    parser.add_argument("--min-score", type=int, default=None, help="Minimum fit score 1-10")
+    parser.add_argument("--min-score", type=int, default=None, help="Minimum fit score 0-100")
     parser.add_argument("--dry-run", action="store_true", help="Scrape only, skip AI assessment")
     parser.add_argument("--resume", action="store_true", help="Resume interrupted run from cache")
     parser.add_argument("--clear-score-cache", action="store_true",

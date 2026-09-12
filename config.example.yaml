@@ -48,6 +48,25 @@ assessment:
   #   - government
   #   - nonprofit
 
+# Deterministic gate before model scoring. Broad job-board searches can return
+# generic data, sales, student, and management roles. Every rejection remains
+# visible in results/prefilter_audit_latest.csv for tuning.
+prefilter:
+  enabled: true
+  min_relevance_score: 7
+  max_llm_jobs: 80
+  max_description_chars: 8000
+  llm_description_chars: 5000
+  exclude_known_nonindustry: true
+  exclude_obvious_nonindustry: true
+  exclude_junior_roles: true
+  exclude_management_roles: true
+  # Optional regular expressions for personal tuning:
+  extra_strong_title_patterns: []
+  extra_domain_patterns: []
+  extra_excluded_title_patterns: []
+  extra_nonindustry_company_patterns: []
+
 output:
   results_dir: "results"
 

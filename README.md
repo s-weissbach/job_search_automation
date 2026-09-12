@@ -1,6 +1,6 @@
 # Job Search Automation
 
-Scrapes job boards and company career portals, then scores each posting against your CV using Claude AI. Results are ranked by fit, saved as a persistent score store, and published as a self-contained HTML report.
+Scrapes job boards and company career portals, applies a deterministic relevance gate, then scores only plausible new postings against your CV with GPT-5.6 Luna through the local Codex login. Results are ranked by fit, saved in Supabase, and published on stephanweissbach.dev.
 
 ## How it works
 
@@ -20,18 +20,16 @@ flowchart TD
 
     DEDUP --> SC[("scrape cache")]
 
-    SC --> CL["Claude API\n(Haiku or Sonnet)"]
-    CL -. "prompt cache — CV sent once" .-> CL
-    CL --> SS[("score store\n.score_store.csv\npersists across runs")]
-    SS -. "cached scores reused" .-> CL
+    SC --> PF["Deterministic relevance gate\n(title · domain · seniority · sector)"]
+    PF --> CX["Local Codex\nGPT-5.6 Luna"]
+    CX --> SS[("score store\n.score_store.csv\npersists across runs")]
+    SS -. "cached scores reused" .-> PF
 
     SS --> F["filter by min_score"]
     F  --> T["ranked table (terminal)"]
     F  --> CSV["results/jobs_TIMESTAMP.csv"]
     F  --> HTML["results/report.html"]
 ```
-
-Prompt caching means your CV is uploaded once per run — all subsequent assessments read it from cache at ~10× lower cost.
 
 The **score store** persists across runs: jobs seen before are not re-assessed, saving API calls on every subsequent run. Use `--clear-score-cache` after updating your CV.
 
@@ -40,11 +38,12 @@ The **score store** persists across runs: jobs seen before are not re-assessed, 
 - **Multi-source scraping** — LinkedIn, Indeed, Google via [JobSpy](https://github.com/speedyapply/JobSpy), plus direct company portals
 - **Company portals** — Workday (CXS API), SAP SuccessFactors (HTML), Greenhouse (JSON API), Lever (JSON API)
 - **Location filtering** — country names, ISO 3166 codes, and configurable city overrides
-- **AI fit scoring** — Claude scores each job 0–100% with reasoning, matching skills, concerns, and seniority assessment
+- **Local AI fit scoring** — GPT-5.6 Luna scores shortlisted jobs 0–100% through the saved Codex/ChatGPT login
+- **Pre-model relevance gate** — rejects generic, sales, student, management, and known non-industry roles before model use, with a reviewable audit CSV
 - **Industry preference** — configurable score penalty for academia / government / non-profit postings
 - **Persistent score cache** — jobs are not re-assessed across runs; scores accumulate over time
 - **HTML report** — self-contained `results/report.html` with filter bar (score, seniority, site, NEW badge)
-- **Prompt caching** — CV sent once per run; all assessments read from cache
+- **Daily capacity guard** — sends at most 80 ranked new candidates to the model and defers overflow
 - **Resumable runs** — `--resume` continues interrupted runs without re-scraping or re-assessing
 - **Deduplication** — by URL and by title/company across all sources
 
@@ -60,14 +59,14 @@ conda activate job_search
 pip install -r requirements.txt
 ```
 
-### 2. Add your API key
+### 2. Configure local credentials
 
 ```bash
 cp .env.example .env
-# edit .env: ANTHROPIC_API_KEY=sk-ant-...
+# Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
 ```
 
-Get a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+The daily scorer uses the Codex CLI's saved ChatGPT login and does not require an Anthropic API key. Run `codex login` once if `codex login status` is not already authenticated.
 
 ### 3. Configure your search
 
@@ -94,7 +93,7 @@ Compresses your CV to a compact YAML profile, reducing token usage on every run:
 python run_search.py --compress-cv
 ```
 
-Saves `cv/cv_compressed.yaml` (gitignored). Review and edit it — this is what Claude uses to assess fit.
+Saves `cv/cv_compressed.yaml` (gitignored). Review and edit it — this is what the scorer uses to assess fit. The legacy compression command still requires Anthropic; the resulting YAML can also be maintained by hand.
 
 ## Usage
 
@@ -112,6 +111,16 @@ python run_search.py --check-active        # re-check old job URLs for liveness
 ```
 
 Results are saved to `results/jobs_YYYYMMDD_HHMMSS.csv` and `results/report.html`.
+
+### Daily local Codex run
+
+```bash
+scripts/run_codex_local.sh
+# Reuse a completed scrape after a scoring failure:
+JOB_SEARCH_RESUME=1 scripts/run_codex_local.sh
+```
+
+The prefilter writes `results/prefilter_audit_latest.csv` and a dated audit copy. Rejected jobs remain visible there for tuning. The launch agent runs this script every day at 05:00 Basel time.
 
 ## Cover letter generator
 
@@ -133,9 +142,9 @@ The PDF is regenerated live as you type, so the download button always reflects 
 
 ---
 
-## GitHub Actions setup (automated daily search)
+## GitHub Actions fallback (manual only)
 
-The included workflow (`.github/workflows/daily_search.yml`) runs the search every day at 05:00 Basel time and can also be triggered manually.
+The GitHub workflow has no schedule and the workflow is disabled in GitHub. It remains in the repository only as a manual legacy fallback; the production daily run is local.
 
 ### 1. Fork or copy the repository
 
@@ -186,7 +195,7 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 
 ### 4. Trigger a test run
 
-Go to **Actions** → **Daily Job Search** → **Run workflow** to trigger a manual run and verify everything works.
+If the workflow is deliberately re-enabled, go to **Actions** → **Daily Job Search** → **Run workflow** to trigger a manual legacy run.
 
 ### Skipping Supabase
 
@@ -218,6 +227,18 @@ If you don't want Supabase, remove the two Supabase steps from `daily_search.yml
 | `max_input_tokens` | `3000` | Skip jobs exceeding this token count (no API cost) |
 | `industry_malus` | `15` | Points deducted from non-industry jobs (academia, government, non-profit). Set to `0` to disable. Use `--clear-score-cache` after changing. |
 | `sector_blacklist` | *(none)* | Optional list of sectors (`industry`, `academia`, `government`, `nonprofit`, `other`) to never send for AI evaluation. A company's sector is only known after its first posting is scored — after that, later postings from the same company are skipped without an API call. |
+
+### `prefilter`
+
+| Key | Default | Description |
+|---|---|---|
+| `enabled` | `true` | Apply deterministic relevance filtering before model scoring |
+| `min_relevance_score` | `7` | Minimum explainable lexical/domain relevance score |
+| `max_llm_jobs` | `80` | Maximum number of new jobs scored in one daily run; overflow is deferred |
+| `exclude_known_nonindustry` | `true` | Reject companies previously identified as academia, government, or nonprofit |
+| `exclude_obvious_nonindustry` | `true` | Reject obvious university, institute, NHS, and government employers |
+| `exclude_junior_roles` | `true` | Reject intern, student, PhD, trainee, and postdoc roles |
+| `exclude_management_roles` | `true` | Reject director, head, VP, chief, and executive roles |
 
 ### `output`
 
