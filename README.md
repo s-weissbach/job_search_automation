@@ -123,7 +123,14 @@ JOB_SEARCH_RESUME=1 scripts/run_codex_local.sh
 
 The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The launch agent runs this script every day at 05:00 Basel time.
 
-Before scraping, the local run checks up to 250 stale listings scoring 60 or higher and uploads only their refreshed status fields. Override the batch with `JOB_SEARCH_ACTIVE_CHECK_LIMIT`, the score floor with `JOB_SEARCH_ACTIVE_MIN_SCORE`, or concurrency with `JOB_SEARCH_ACTIVE_CHECK_WORKERS`.
+Before scraping, the local run automatically expires jobs scoring below 60 once
+their effective posting date reaches 14 days old, without requesting their URLs.
+It then checks up to 250 stale listings scoring 60 or higher and uploads only
+the changed status fields. Override the automatic rule with
+`JOB_SEARCH_LOW_SCORE_CUTOFF` and `JOB_SEARCH_LOW_SCORE_EXPIRY_DAYS`; override
+the HTTP-check batch with `JOB_SEARCH_ACTIVE_CHECK_LIMIT`, the score floor with
+`JOB_SEARCH_ACTIVE_MIN_SCORE`, or concurrency with
+`JOB_SEARCH_ACTIVE_CHECK_WORKERS`.
 
 ## Cover letter generator
 
