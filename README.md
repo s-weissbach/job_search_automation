@@ -180,6 +180,9 @@ create table if not exists job_scores (
 );
 ```
 
+When a source omits `date_posted`, the automation stores that run's Zurich
+scrape date instead so age-based cleanup remains deterministic.
+
 3. Note your **Project URL** and **service_role key** (Settings → API).
 
 ### 3. Add GitHub Actions secrets

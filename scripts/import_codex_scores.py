@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.html_reporter import generate_html_report
+from src.job_dates import posting_date_or_scrape_date
 
 
 BASEL_TZ = ZoneInfo("Europe/Zurich")
@@ -114,7 +115,7 @@ def main() -> None:
             "company": source.get("company", ""),
             "location": source.get("location", ""),
             "site": source.get("site", ""),
-            "date_posted": source.get("date_posted", ""),
+            "date_posted": posting_date_or_scrape_date(source.get("date_posted"), assessed_at),
             "fit_score": fit_score,
             "job_sector": sector,
             "seniority_match": result["seniority_match"],
