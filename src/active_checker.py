@@ -1,7 +1,9 @@
 """Check whether past job URLs are still accessible (not 404/expired)."""
 
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 _BASEL_TZ = ZoneInfo("Europe/Zurich")
@@ -19,26 +21,45 @@ _HEADERS = {
 }
 
 _STALE_DAYS = 7   # re-check URLs older than this
+_LINKEDIN_EXPIRED_MARKERS = (
+    "job is no longer available",
+    "job posting is no longer available",
+    "no longer accepting applications",
+    "this job has expired",
+)
+
+
+def _classify_response(source_url: str, status_code: int, final_url: str, body: str) -> str:
+    """Classify one HTTP response without treating access blocks as closures."""
+    if status_code in {404, 410}:
+        return "expired"
+    if status_code in {401, 403, 429} or status_code >= 500:
+        return "unknown"
+    if status_code >= 400:
+        return "unknown"
+
+    source_host = urlsplit(source_url).netloc.casefold()
+    if "linkedin.com" in source_host:
+        final = urlsplit(final_url)
+        tracking = parse_qs(final.query).get("trk", [])
+        if "expired_jd_redirect" in tracking:
+            return "expired"
+        normalized_body = body.casefold()
+        if any(marker in normalized_body for marker in _LINKEDIN_EXPIRED_MARKERS):
+            return "expired"
+        # A live public listing stays on /jobs/view/<id>. LinkedIn redirects
+        # expired listings to a broad search page while still returning 200.
+        return "active" if "/jobs/view/" in final.path.casefold() else "unknown"
+
+    return "active" if status_code < 400 else "unknown"
 
 
 def _check_url(url: str, timeout: int = 10) -> str:
     """Return 'active', 'expired', or 'unknown'."""
     try:
-        resp = requests.head(url, headers=_HEADERS, timeout=timeout,
-                             allow_redirects=True)
-        if resp.status_code == 404:
-            return "expired"
-        if resp.status_code < 400:
-            return "active"
-        # Some sites block HEAD — fall back to GET
         resp = requests.get(url, headers=_HEADERS, timeout=timeout,
-                            allow_redirects=True, stream=True)
-        resp.close()
-        if resp.status_code == 404:
-            return "expired"
-        if resp.status_code < 400:
-            return "active"
-        return "expired"
+                            allow_redirects=True)
+        return _classify_response(url, resp.status_code, resp.url, resp.text)
     except Exception:
         return "unknown"
 
@@ -48,6 +69,9 @@ def check_active_jobs(
     max_jobs: int = 200,
     timeout: int = 10,
     stale_days: int = _STALE_DAYS,
+    min_score: int = 60,
+    workers: int = 8,
+    output_path: str | Path | None = None,
 ) -> int:
     """Check active status for jobs in the score store that haven't been checked recently.
 
@@ -70,6 +94,8 @@ def check_active_jobs(
         df["is_active"] = ""
     if "last_active_check" not in df.columns:
         df["last_active_check"] = ""
+    else:
+        df["last_active_check"] = df["last_active_check"].astype("object")
 
     cutoff = (datetime.now(_BASEL_TZ) - timedelta(days=stale_days)).date()
 
@@ -82,28 +108,74 @@ def check_active_jobs(
         except ValueError:
             return True
 
-    to_check = df[df.apply(needs_check, axis=1)].head(max_jobs)
+    status = df["is_active"].fillna("").astype(str).str.casefold()
+    eligible = status.isin({"", "active", "true", "unknown", "nan"})
+    scores = pd.to_numeric(df.get("fit_score", pd.Series(index=df.index, dtype=float)), errors="coerce").fillna(-1)
+    candidates = df[df.apply(needs_check, axis=1) & eligible & (scores >= min_score)].copy()
+    candidates["_last_check_sort"] = pd.to_datetime(candidates["last_active_check"], errors="coerce")
+    candidates["_score_sort"] = scores.loc[candidates.index]
+    to_check = candidates.sort_values(
+        ["_last_check_sort", "_score_sort"],
+        ascending=[True, False],
+        na_position="first",
+        kind="stable",
+    ).head(max_jobs)
     checked = 0
+    checked_indices: list[int] = []
 
     print(f"  Checking {len(to_check)} job URLs (of {len(df)} total)…")
 
-    for idx in to_check.index:
-        url = str(df.at[idx, "job_url"])
-        if not url or url == "nan":
-            continue
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {
+            pool.submit(_check_url, str(df.at[idx, "job_url"]), timeout): idx
+            for idx in to_check.index
+            if str(df.at[idx, "job_url"]) not in {"", "nan"}
+        }
+        for future in as_completed(futures):
+            idx = futures[future]
+            result = future.result()
+            previous = str(df.at[idx, "is_active"] or "").casefold()
+            # A transient block must not turn a known state into a false one.
+            if result != "unknown" or previous not in {"active", "true", "expired", "false"}:
+                df.at[idx, "is_active"] = result
+            df.at[idx, "last_active_check"] = datetime.now(_BASEL_TZ).date().isoformat()
+            checked += 1
+            checked_indices.append(idx)
 
-        status = _check_url(url, timeout=timeout)
-        df.at[idx, "is_active"] = status
-        df.at[idx, "last_active_check"] = date.today().isoformat()
-        checked += 1
-
-        title = str(df.at[idx, "title"] if "title" in df.columns else url)[:50]
-        symbol = {"active": "✓", "expired": "✕", "unknown": "?"}.get(status, "?")
-        print(f"    {symbol} [{status:7}] {title}")
+            title = str(df.at[idx, "title"] if "title" in df.columns else df.at[idx, "job_url"])[:50]
+            symbol = {"active": "✓", "expired": "✕", "unknown": "?"}.get(result, "?")
+            print(f"    {symbol} [{result:7}] {title}")
 
     df.to_csv(p, index=False)
+    if output_path is not None:
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        df.loc[checked_indices, ["job_url", "is_active", "last_active_check"]].to_csv(output, index=False)
     active   = (df["is_active"] == "active").sum()
     expired  = (df["is_active"] == "expired").sum()
     unknown  = len(df) - active - expired
     print(f"  Active: {active}  |  Expired: {expired}  |  Unknown: {unknown}")
     return checked
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Refresh stored job-listing activity status")
+    parser.add_argument("score_store")
+    parser.add_argument("--output")
+    parser.add_argument("--max-jobs", type=int, default=200)
+    parser.add_argument("--timeout", type=int, default=10)
+    parser.add_argument("--stale-days", type=int, default=_STALE_DAYS)
+    parser.add_argument("--min-score", type=int, default=60)
+    parser.add_argument("--workers", type=int, default=8)
+    args = parser.parse_args()
+    check_active_jobs(
+        args.score_store,
+        max_jobs=args.max_jobs,
+        timeout=args.timeout,
+        stale_days=args.stale_days,
+        min_score=args.min_score,
+        workers=args.workers,
+        output_path=args.output,
+    )

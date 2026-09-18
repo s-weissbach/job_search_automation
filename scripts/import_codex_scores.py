@@ -37,7 +37,13 @@ def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
     expected = {str(job["job_id"]) for job in queue}
     by_id: dict[str, dict] = {}
     for result in assessments:
-        job_id = str(result.get("job_id") or "")
+        raw_job_id = str(result.get("job_id") or "")
+        job_id = raw_job_id
+        if job_id not in expected and len(job_id) >= 12:
+            prefix_matches = [candidate for candidate in expected if candidate.startswith(job_id) or job_id.startswith(candidate)]
+            if len(prefix_matches) == 1:
+                job_id = prefix_matches[0]
+                print(f"  Corrected truncated model job_id {raw_job_id!r} -> {job_id!r}")
         if not job_id or job_id in by_id:
             raise ValueError(f"Missing or duplicate job_id: {job_id!r}")
         score = result.get("score")
@@ -49,7 +55,7 @@ def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
             raise ValueError(f"Invalid seniority_match for {job_id}")
         if not isinstance(result.get("matching_skills"), list) or not isinstance(result.get("concerns"), list):
             raise ValueError(f"Skills and concerns must be arrays for {job_id}")
-        by_id[job_id] = result
+        by_id[job_id] = {**result, "job_id": job_id}
 
     actual = set(by_id)
     if actual != expected:

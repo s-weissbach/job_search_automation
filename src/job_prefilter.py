@@ -130,6 +130,14 @@ def normalized_identity(title: object, company: object, location: object) -> str
     return "|".join((clean(title), clean(company), clean(location)))
 
 
+def normalized_role_identity(title: object, company: object) -> str:
+    """Stable role identity used to suppress cross-location reposts."""
+    def clean(value: object) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+    title_key, company_key = clean(title), clean(company)
+    return f"{title_key}|{company_key}" if title_key and company_key else ""
+
+
 @dataclass(frozen=True)
 class PrefilterDecision:
     accepted: bool

@@ -1,6 +1,6 @@
 import unittest
 
-from src.job_prefilter import canonical_job_url, evaluate_job
+from src.job_prefilter import canonical_job_url, evaluate_job, normalized_role_identity
 
 
 CONFIG = {
@@ -103,6 +103,13 @@ class JobPrefilterTests(unittest.TestCase):
     def test_url_normalization_preserves_job_identifiers(self):
         url = "https://example.com/jobs/view?jk=abc&utm_source=mail&ref=feed"
         self.assertEqual(canonical_job_url(url), "https://example.com/jobs/view?jk=abc")
+
+    def test_role_identity_suppresses_cross_location_reposts(self):
+        basel = normalized_role_identity("Senior Data Scientist", "Example Pharma")
+        london = normalized_role_identity("Senior Data Scientist", "Example Pharma")
+        other_company = normalized_role_identity("Senior Data Scientist", "Another Pharma")
+        self.assertEqual(basel, london)
+        self.assertNotEqual(basel, other_company)
 
 
 if __name__ == "__main__":

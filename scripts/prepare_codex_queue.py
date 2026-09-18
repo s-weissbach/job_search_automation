@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.job_prefilter import canonical_job_url, evaluate_job, normalized_identity
+from src.job_prefilter import canonical_job_url, evaluate_job, normalized_identity, normalized_role_identity
 
 
 BASEL_TZ = ZoneInfo("Europe/Zurich")
@@ -59,11 +59,15 @@ def main() -> None:
 
     cached_urls: set[str] = set()
     cached_identities: set[str] = set()
+    cached_role_identities: set[str] = set()
     company_sectors: dict[str, str] = {}
     if not store.empty:
         for _, row in store.iterrows():
             cached_urls.add(canonical_job_url(row.get("job_url")))
             cached_identities.add(normalized_identity(row.get("title"), row.get("company"), row.get("location")))
+            role_identity = normalized_role_identity(row.get("title"), row.get("company"))
+            if role_identity:
+                cached_role_identities.add(role_identity)
             company = str(row.get("company") or "").strip().casefold()
             sector = str(row.get("job_sector") or "").strip().casefold()
             if company and sector:
@@ -71,6 +75,7 @@ def main() -> None:
 
     seen_urls: set[str] = set()
     seen_identities: set[str] = set()
+    seen_role_identities: set[str] = set()
     candidates: list[dict] = []
     rejected_pool: list[dict] = []
     audit: list[dict] = []
@@ -81,17 +86,22 @@ def main() -> None:
         raw = {key: _clean(value) for key, value in row.to_dict().items()}
         url = canonical_job_url(raw.get("job_url"))
         identity = normalized_identity(raw.get("title"), raw.get("company"), raw.get("location"))
+        role_identity = normalized_role_identity(raw.get("title"), raw.get("company"))
 
-        if (url and url in cached_urls) or (identity and identity in cached_identities):
+        if ((url and url in cached_urls) or (identity and identity in cached_identities)
+                or (role_identity and role_identity in cached_role_identities)):
             skipped_cached += 1
             continue
-        if (url and url in seen_urls) or (identity and identity in seen_identities):
+        if ((url and url in seen_urls) or (identity and identity in seen_identities)
+                or (role_identity and role_identity in seen_role_identities)):
             skipped_duplicate += 1
             continue
         if url:
             seen_urls.add(url)
         if identity:
             seen_identities.add(identity)
+        if role_identity:
+            seen_role_identities.add(role_identity)
 
         company = str(raw.get("company") or "").strip().casefold()
         decision = evaluate_job(raw, company_sectors.get(company), prefilter_config)
