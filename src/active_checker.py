@@ -70,7 +70,7 @@ def check_active_jobs(
     timeout: int = 10,
     stale_days: int = _STALE_DAYS,
     min_score: int = 60,
-    workers: int = 8,
+    workers: int = 2,
     output_path: str | Path | None = None,
 ) -> int:
     """Check active status for jobs in the score store that haven't been checked recently.
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, default=10)
     parser.add_argument("--stale-days", type=int, default=_STALE_DAYS)
     parser.add_argument("--min-score", type=int, default=60)
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
     check_active_jobs(
         args.score_store,

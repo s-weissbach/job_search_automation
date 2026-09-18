@@ -97,7 +97,7 @@ ACTIVE_STATUS_UPLOAD="results/.pending_active_status_upload.csv"
     --output "$ACTIVE_STATUS_UPLOAD" \
     --max-jobs "${JOB_SEARCH_ACTIVE_CHECK_LIMIT:-250}" \
     --min-score "${JOB_SEARCH_ACTIVE_MIN_SCORE:-60}" \
-    --workers "${JOB_SEARCH_ACTIVE_CHECK_WORKERS:-8}" || echo "WARNING: active-status refresh failed; continuing with scoring"
+    --workers "${JOB_SEARCH_ACTIVE_CHECK_WORKERS:-2}" || echo "WARNING: active-status refresh failed; continuing with scoring"
 if [ -s "$ACTIVE_STATUS_UPLOAD" ]; then
     run_with_retry "active-status upload" "$PYTHON" src/supabase_uploader.py "$ACTIVE_STATUS_UPLOAD" || exit 1
     /bin/rm -f -- "$ACTIVE_STATUS_UPLOAD"
