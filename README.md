@@ -42,6 +42,7 @@ The **score store** persists across runs: jobs seen before are not re-assessed, 
 - **Recall-first relevance gate** — rejects only clear mismatches, sends plausible borderline roles to the model, and keeps a reviewable audit CSV
 - **Industry preference** — configurable score penalty for academia / government / non-profit postings
 - **Persistent score cache** — jobs are not re-assessed across runs; scores accumulate over time
+- **Active-listing refresh** — every daily run re-checks a bounded batch of high-fit listings and recognizes LinkedIn's HTTP-200 expired redirects
 - **HTML report** — self-contained `results/report.html` with filter bar (score, seniority, site, NEW badge)
 - **Daily capacity guard** — sends at most 40 ranked jobs, including five rotating recall-audit samples, and defers candidate overflow
 - **Resumable runs** — `--resume` continues interrupted runs without re-scraping or re-assessing
@@ -121,6 +122,8 @@ JOB_SEARCH_RESUME=1 scripts/run_codex_local.sh
 ```
 
 The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The launch agent runs this script every day at 05:00 Basel time.
+
+Before scraping, the local run checks up to 250 stale listings scoring 60 or higher and uploads only their refreshed status fields. Override the batch with `JOB_SEARCH_ACTIVE_CHECK_LIMIT`, the score floor with `JOB_SEARCH_ACTIVE_MIN_SCORE`, or concurrency with `JOB_SEARCH_ACTIVE_CHECK_WORKERS`.
 
 ## Cover letter generator
 

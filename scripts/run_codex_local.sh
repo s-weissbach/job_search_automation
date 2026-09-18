@@ -87,6 +87,22 @@ fi
 
 run_with_retry "Supabase download" "$PYTHON" src/supabase_downloader.py results/.score_store.csv || exit 1
 
+# Refresh a bounded batch of the highest-value stale listings on every run.
+# The checker recognizes LinkedIn's HTTP-200 expired redirects and uploads
+# only the three status fields, keeping this much lighter than a full-store
+# upsert.
+ACTIVE_STATUS_UPLOAD="results/.pending_active_status_upload.csv"
+/bin/rm -f -- "$ACTIVE_STATUS_UPLOAD"
+"$PYTHON" src/active_checker.py results/.score_store.csv \
+    --output "$ACTIVE_STATUS_UPLOAD" \
+    --max-jobs "${JOB_SEARCH_ACTIVE_CHECK_LIMIT:-250}" \
+    --min-score "${JOB_SEARCH_ACTIVE_MIN_SCORE:-60}" \
+    --workers "${JOB_SEARCH_ACTIVE_CHECK_WORKERS:-8}" || echo "WARNING: active-status refresh failed; continuing with scoring"
+if [ -s "$ACTIVE_STATUS_UPLOAD" ]; then
+    run_with_retry "active-status upload" "$PYTHON" src/supabase_uploader.py "$ACTIVE_STATUS_UPLOAD" || exit 1
+    /bin/rm -f -- "$ACTIVE_STATUS_UPLOAD"
+fi
+
 search_args=(--dry-run)
 if [ "${JOB_SEARCH_RESUME:-0}" = "1" ] && [ -s results/.scrape_cache.csv ]; then
     search_args+=(--resume)
