@@ -9,6 +9,8 @@ _BASEL_TZ = ZoneInfo("Europe/Zurich")
 import pandas as pd
 import anthropic
 
+from src.job_dates import posting_date_or_scrape_date
+
 _JOB_SCHEMA = {
     "type": "object",
     "properties": {
@@ -380,6 +382,7 @@ class JobAssessor:
 
         def record(idx: int, result: dict, row: pd.Series, url: str) -> int:
             nonlocal cache_written
+            assessed_at = datetime.now(_BASEL_TZ).date().isoformat()
             raw_score = result["score"]
             sector = result.get("job_sector", "other")
             adjusted_score = self._apply_malus(raw_score, sector)
@@ -403,13 +406,13 @@ class JobAssessor:
                     "fit_reasoning": result["reasoning"],
                     "matching_skills": joined_skills,
                     "concerns": joined_concerns,
-                    "assessed_at": datetime.now(_BASEL_TZ).date().isoformat(),
+                    "assessed_at": assessed_at,
                     "is_active": "active",
                     "title": row.get("title", ""),
                     "company": row.get("company", ""),
                     "location": row.get("location", ""),
                     "site": row.get("site", ""),
-                    "date_posted": row.get("date_posted", ""),
+                    "date_posted": posting_date_or_scrape_date(row.get("date_posted"), assessed_at),
                     "description": row.get("description", ""),
                 }])
                 if existing_cols is not None:
