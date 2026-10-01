@@ -1,6 +1,6 @@
 # Job Search Automation
 
-Scrapes job boards and company career portals, applies a deterministic relevance gate, then scores only plausible new postings against your CV with GPT-5.6 Luna through the local Codex login. Results are ranked by fit, saved in Supabase, and published on stephanweissbach.dev.
+Scrapes job boards and company career portals, applies a deterministic relevance gate, then scores only plausible new postings against your CV with Perry's local Qwen model. Results are ranked by fit, saved through the owner-only website API, and published on stephanweissbach.dev.
 
 ## How it works
 
@@ -21,7 +21,7 @@ flowchart TD
     DEDUP --> SC[("scrape cache")]
 
     SC --> PF["Deterministic relevance gate\n(title · domain · seniority · sector)"]
-    PF --> CX["Local Codex\nGPT-5.6 Luna"]
+    PF --> CX["Perry\nlocal Qwen via LM Studio"]
     CX --> SS[("score store\n.score_store.csv\npersists across runs")]
     SS -. "cached scores reused" .-> PF
 
@@ -38,7 +38,7 @@ The **score store** persists across runs: jobs seen before are not re-assessed, 
 - **Multi-source scraping** — LinkedIn, Indeed, Google via [JobSpy](https://github.com/speedyapply/JobSpy), plus direct company portals
 - **Company portals** — Workday (CXS API), SAP SuccessFactors (HTML), Greenhouse (JSON API), Lever (JSON API)
 - **Location filtering** — country names, ISO 3166 codes, and configurable city overrides
-- **Local AI fit scoring** — GPT-5.6 Luna scores shortlisted jobs 0–100% through the saved Codex/ChatGPT login
+- **Local AI fit scoring** — Perry's localhost-only Qwen model scores shortlisted jobs 0–100%; listings are treated as untrusted data and the scorer has no tools
 - **Recall-first relevance gate** — rejects only clear mismatches, sends plausible borderline roles to the model, and keeps a reviewable audit CSV
 - **Industry preference** — configurable score penalty for academia / government / non-profit postings
 - **Persistent score cache** — jobs are not re-assessed across runs; scores accumulate over time
@@ -67,7 +67,7 @@ cp .env.example .env
 # Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
 ```
 
-The daily scorer uses the Codex CLI's saved ChatGPT login and does not require an Anthropic API key. Run `codex login` once if `codex login status` is not already authenticated.
+The Perry daily scorer requires LM Studio's OpenAI-compatible API on `127.0.0.1:1234` with model id `qwen3.8-27b-local`. It needs no cloud-model key. Website sync reads Perry's existing revocable key from macOS Keychain (account `private-ai`, service `stephanweissbach.dev-focus-api`), so the Supabase service-role key does not live on this Mac.
 
 ### 3. Configure your search
 
@@ -113,15 +113,15 @@ python run_search.py --check-active        # re-check old job URLs for liveness
 
 Results are saved to `results/jobs_YYYYMMDD_HHMMSS.csv` and `results/report.html`.
 
-### Daily local Codex run
+### Daily local Perry run
 
 ```bash
-scripts/run_codex_local.sh
+scripts/run_perry_local.sh
 # Reuse a completed scrape after a scoring failure:
-JOB_SEARCH_RESUME=1 scripts/run_codex_local.sh
+JOB_SEARCH_RESUME=1 scripts/run_perry_local.sh
 ```
 
-The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The launch agent runs this script every day at 05:00 Basel time.
+The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The Mac Studio launch agent runs this script every day at 05:00 Basel time; the existing website cron sends Jobdigest after the results arrive.
 
 Before scraping, the local run automatically expires jobs scoring below 60 once
 their effective posting date reaches 14 days old, without requesting their URLs.
