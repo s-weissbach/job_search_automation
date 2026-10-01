@@ -59,6 +59,10 @@ def download(url: str, key: str, output: Path) -> int:
         page += 1
     if jobs:
         frame = pd.DataFrame(jobs).drop(columns=["created_at"], errors="ignore")
+        # Keep the score-store schema stable without downloading every old
+        # description. Newly scored rows still carry their source description.
+        if "description" not in frame.columns:
+            frame["description"] = ""
         output.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(output, index=False)
     print(f"Downloaded {len(jobs)} website job records to {output}.")
