@@ -11,19 +11,14 @@ search:
     - "Switzerland"
     - "Germany"
     - "Denmark"
+    - "Austria"
   sites:
     - "linkedin"
-    - "indeed"
-    - "google"
   results_per_site: 20
   # JobSpy's LinkedIn pagination stops at offset 1,000, its native maximum.
   results_per_site_by_site:
     linkedin: 1000
   hours_old: 72
-  country_indeed_by_location:
-    Switzerland: "Switzerland"
-    Germany: "Germany"
-    Denmark: "Denmark"
   linkedin_fetch_description: true
   location_city_map:
     Basel: Switzerland
@@ -36,6 +31,7 @@ search:
     Heidelberg: Germany
     Copenhagen: Denmark
     Aarhus: Denmark
+    Vienna: Austria
 
 assessment:
   min_score: 70
@@ -84,6 +80,10 @@ output:
   results_dir: "results/julia"
 
 pharmajob_io:
-  enabled: false
+  enabled: true
+  base_url: "http://127.0.0.1:8000"
+  timeout_seconds: 15
+  page_size: 100
+  max_pages: 5
 
 company_portals: {}
