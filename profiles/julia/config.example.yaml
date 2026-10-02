@@ -10,14 +10,20 @@ search:
   locations:
     - "Switzerland"
     - "Germany"
-    - "Austria"
+    - "Denmark"
   sites:
     - "linkedin"
     - "indeed"
     - "google"
   results_per_site: 20
+  # JobSpy's LinkedIn pagination stops at offset 1,000, its native maximum.
+  results_per_site_by_site:
+    linkedin: 1000
   hours_old: 72
-  country_indeed: "Germany"
+  country_indeed_by_location:
+    Switzerland: "Switzerland"
+    Germany: "Germany"
+    Denmark: "Denmark"
   linkedin_fetch_description: true
   location_city_map:
     Basel: Switzerland
@@ -28,7 +34,8 @@ search:
     Munich: Germany
     Berlin: Germany
     Heidelberg: Germany
-    Vienna: Austria
+    Copenhagen: Denmark
+    Aarhus: Denmark
 
 assessment:
   min_score: 70
