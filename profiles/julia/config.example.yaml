@@ -1,0 +1,82 @@
+search:
+  keywords:
+    - "translational scientist"
+    - "discovery scientist immunology"
+    - "scientist cell biology"
+    - "scientist disease biology"
+    - "organoid scientist"
+    - "scientist in vitro models"
+    - "scientist assay development"
+  locations:
+    - "Switzerland"
+    - "Germany"
+    - "Austria"
+  sites:
+    - "linkedin"
+    - "indeed"
+    - "google"
+  results_per_site: 20
+  hours_old: 72
+  country_indeed: "Germany"
+  linkedin_fetch_description: true
+  location_city_map:
+    Basel: Switzerland
+    Zurich: Switzerland
+    Schlieren: Switzerland
+    Geneva: Switzerland
+    Lausanne: Switzerland
+    Munich: Germany
+    Berlin: Germany
+    Heidelberg: Germany
+    Vienna: Austria
+
+assessment:
+  min_score: 70
+  max_description_chars: 5000
+  max_input_tokens: 3500
+  industry_malus: 15
+
+prefilter:
+  enabled: true
+  min_relevance_score: 7
+  max_llm_jobs: 40
+  recall_audit_sample_size: 5
+  max_description_chars: 8000
+  llm_description_chars: 5000
+  exclude_known_nonindustry: false
+  exclude_obvious_nonindustry: false
+  exclude_junior_roles: true
+  exclude_management_roles: false
+  exclude_explicit_seniority_mismatches: false
+  extra_strong_title_patterns:
+    - "translational scientist"
+    - "discovery scientist"
+    - "disease biology"
+    - "organoid"
+    - "cell biology"
+    - "immunology"
+  extra_domain_patterns:
+    - "organoid"
+    - "immunolog"
+    - "cell biology"
+    - "kidney|renal"
+    - "lung|pulmonary"
+    - "functional assay"
+    - "in vitro model"
+    - "flow cytometr"
+    - "high-content imaging"
+    - "target validation"
+    - "disease mechanism"
+    - "crispr"
+  extra_excluded_title_patterns:
+    - "computational scientist"
+    - "bioinformatics scientist"
+  extra_nonindustry_company_patterns: []
+
+output:
+  results_dir: "results/julia"
+
+pharmajob_io:
+  enabled: false
+
+company_portals: {}
