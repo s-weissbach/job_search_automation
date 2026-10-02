@@ -123,6 +123,11 @@ JOB_SEARCH_RESUME=1 scripts/run_perry_local.sh
 
 The prefilter labels jobs as `strong`, `borderline`, `rejected`, or `recall_sample`, and writes `results/prefilter_audit_latest.csv` plus a dated audit copy. Relevant academic, government, management, and domain-specific software roles are allowed through for model judgment. Five high-signal rejects are sampled each day to expose blind spots. The Mac Studio launch agent runs this script every day at 05:00 Basel time; the existing website cron sends Jobdigest after the results arrive.
 
+When `profiles/julia/config.yaml` and `profiles/julia/cv_compressed.yaml` are
+installed, the same daily command runs Julia's search immediately after the
+owner search. Her cache, results, CV, scoring, and website rows remain isolated
+under the `julia` profile. See `profiles/README.md`.
+
 Before scraping, the local run automatically expires jobs scoring below 60 once
 their effective posting date reaches 14 days old, without requesting their URLs.
 It then checks up to 250 stale listings scoring 60 or higher and uploads only

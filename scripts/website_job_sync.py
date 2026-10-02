@@ -9,7 +9,7 @@ import math
 import subprocess
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import pandas as pd
@@ -45,11 +45,18 @@ def request_json(url: str, key: str, payload: dict | None = None) -> dict:
         raise RuntimeError(f"Website API request failed: {exc}") from exc
 
 
-def download(url: str, key: str, output: Path) -> int:
+def with_query(url: str, **params: object) -> str:
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query.update({key: str(value) for key, value in params.items()})
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def download(url: str, key: str, output: Path, profile: str = "owner") -> int:
     jobs: list[dict] = []
     page = 0
     while True:
-        payload = request_json(f"{url}?{urlencode({'sync': '1', 'page': page})}", key)
+        payload = request_json(with_query(url, sync=1, page=page, profile=profile), key)
         batch = payload.get("jobs") or []
         if not isinstance(batch, list):
             raise RuntimeError("Website API returned an invalid jobs payload.")
@@ -80,12 +87,12 @@ def json_records(path: Path) -> list[dict]:
     return records
 
 
-def upload(url: str, key: str, source: Path) -> int:
+def upload(url: str, key: str, source: Path, profile: str = "owner") -> int:
     records = json_records(source)
     sent = 0
     for start in range(0, len(records), 200):
         batch = records[start:start + 200]
-        response = request_json(url, key, {"jobs": batch})
+        response = request_json(with_query(url, profile=profile), key, {"jobs": batch})
         if not response.get("ok"):
             raise RuntimeError("Website API did not confirm the job import.")
         sent += len(batch)
@@ -98,12 +105,13 @@ def main() -> None:
     parser.add_argument("action", choices=["download", "upload"])
     parser.add_argument("path")
     parser.add_argument("--url", default=DEFAULT_URL)
+    parser.add_argument("--profile", choices=("owner", "julia"), default="owner")
     args = parser.parse_args()
     key = keychain_key()
     if args.action == "download":
-        download(args.url, key, Path(args.path))
+        download(args.url, key, Path(args.path), args.profile)
     else:
-        upload(args.url, key, Path(args.path))
+        upload(args.url, key, Path(args.path), args.profile)
 
 
 if __name__ == "__main__":

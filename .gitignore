@@ -6,6 +6,8 @@ cv/*.doc
 cv/cv_compressed.yaml
 cv/cv_summary.*
 !cv/.gitkeep
+profiles/*/config.yaml
+profiles/*/cv_compressed.yaml
 
 # Results contain scraped data
 results/*
