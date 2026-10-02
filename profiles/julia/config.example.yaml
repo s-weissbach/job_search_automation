@@ -82,6 +82,14 @@ output:
 pharmajob_io:
   enabled: true
   base_url: "http://127.0.0.1:8000"
+  keywords:
+    - "scientist"
+    - "immunology"
+    - "organoid"
+    - "cell biology"
+    - "translational"
+    - "assay development"
+    - "disease biology"
   timeout_seconds: 15
   page_size: 100
   max_pages: 5
