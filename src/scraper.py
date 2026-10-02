@@ -35,18 +35,45 @@ def scrape_jobs(config: dict) -> pd.DataFrame:
 def _scrape_one(keyword: str, location: str, sites: list, cfg: dict) -> pd.DataFrame:
     from jobspy import scrape_jobs
 
-    kwargs = {
-        "site_name": sites,
-        "search_term": keyword,
-        "location": location,
-        "results_wanted": cfg.get("results_per_site", 15),
-        "verbose": 0,
-    }
-    if cfg.get("hours_old"):
-        kwargs["hours_old"] = cfg["hours_old"]
-    if cfg.get("country_indeed"):
-        kwargs["country_indeed"] = cfg["country_indeed"]
-    if cfg.get("linkedin_fetch_description"):
-        kwargs["linkedin_fetch_description"] = True
+    frames = []
+    for site in sites:
+        kwargs = {
+            "site_name": site,
+            "search_term": keyword,
+            "location": location,
+            "results_wanted": _site_results_limit(site, cfg),
+            "verbose": 0,
+        }
+        if cfg.get("hours_old"):
+            kwargs["hours_old"] = cfg["hours_old"]
+        country_indeed = _indeed_country(location, cfg)
+        if country_indeed:
+            kwargs["country_indeed"] = country_indeed
+        if cfg.get("linkedin_fetch_description"):
+            kwargs["linkedin_fetch_description"] = True
 
-    return scrape_jobs(**kwargs)
+        frame = scrape_jobs(**kwargs)
+        if frame is not None and not frame.empty:
+            frames.append(frame)
+
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _site_results_limit(site: str, cfg: dict) -> int:
+    """Return a site-specific result cap, falling back to the shared limit."""
+    site_limits = cfg.get("results_per_site_by_site", {})
+    normalized_site = site.strip().casefold()
+    for configured_site, limit in site_limits.items():
+        if str(configured_site).strip().casefold() == normalized_site:
+            return int(limit)
+    return int(cfg.get("results_per_site", 15))
+
+
+def _indeed_country(location: str, cfg: dict) -> str | None:
+    """Return the Indeed market for a search location, with legacy fallback."""
+    country_map = cfg.get("country_indeed_by_location", {})
+    normalized_location = location.strip().casefold()
+    for configured_location, country in country_map.items():
+        if str(configured_location).strip().casefold() == normalized_location:
+            return str(country)
+    return cfg.get("country_indeed")
