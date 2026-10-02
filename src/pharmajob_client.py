@@ -162,8 +162,11 @@ def fetch_pharmajob_jobs(config: dict) -> pd.DataFrame:
     max_pages = pj_cfg.get("max_pages", 5)
     timeout = pj_cfg.get("timeout_seconds", 15)
 
-    keywords = config["search"]["keywords"]
-    locations = config["search"].get("locations", [])
+    # Profiles can use broader source-specific discovery terms here without
+    # widening their LinkedIn/Indeed searches. The normal prefilter and model
+    # scoring still decide which roles are relevant enough to publish.
+    keywords = pj_cfg.get("keywords") or config["search"]["keywords"]
+    locations = pj_cfg.get("locations") or config["search"].get("locations", [])
 
     rows: list[dict] = []
     for keyword in keywords:

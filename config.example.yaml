@@ -81,6 +81,10 @@ output:
 pharmajob_io:
   enabled: false
   base_url: "http://localhost:8000"
+  # Optional source-specific discovery terms and locations. When omitted,
+  # the main search keywords and locations above are reused.
+  # keywords: ["scientist", "translational", "immunology"]
+  # locations: ["Switzerland", "Germany"]
   timeout_seconds: 15
   page_size: 100      # pharmajob.io's GET /jobs caps this at 100 server-side
   max_pages: 5        # per (keyword, location) pair
