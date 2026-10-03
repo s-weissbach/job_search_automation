@@ -37,7 +37,9 @@ assessment:
   min_score: 70
   max_description_chars: 5000
   max_input_tokens: 3500
-  industry_malus: 15
+  # No penalty for academia, government or non-profit roles: Julia is open to
+  # all sectors. The 15-point non-industry penalty is the owner's preference only.
+  industry_malus: 0
 
 prefilter:
   enabled: true
