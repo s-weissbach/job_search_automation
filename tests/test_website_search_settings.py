@@ -28,13 +28,13 @@ def test_apply_settings_overrides_only_editable_fields():
     merged = website_search_settings.apply_settings(CONFIG, {
         "keywords": ["translational scientist"],
         "locations": ["Switzerland", "Germany"],
-        "sites": ["indeed"],
+        "sites": ["indeed"],  # stale value from an older website version
         "hours_old": 24,
         "min_score": 80,
     })
     assert merged["search"]["keywords"] == ["translational scientist"]
     assert merged["search"]["locations"] == ["Switzerland", "Germany"]
-    assert merged["search"]["sites"] == ["indeed"]
+    assert merged["search"]["sites"] == ["linkedin", "zip_recruiter"]
     assert merged["search"]["hours_old"] == 24
     assert merged["search"]["location_city_map"] == {"Basel": "Switzerland"}
     assert merged["assessment"] == {"min_score": 80, "industry_malus": 15}
@@ -42,16 +42,15 @@ def test_apply_settings_overrides_only_editable_fields():
     assert CONFIG["search"]["keywords"] == ["data scientist"]
 
 
-def test_local_settings_keeps_only_website_supported_sites():
+def test_local_settings_leaves_sources_local():
     assert website_search_settings.local_settings(CONFIG) == {
         "keywords": ["data scientist"],
         "locations": ["Basel"],
-        "sites": ["linkedin"],
         "hours_old": 48,
         "min_score": 65,
     }
 
 
 def test_local_settings_skips_unrepresentable_config():
-    config = {"search": {"keywords": ["x"], "locations": ["y"], "sites": ["zip_recruiter"]}}
+    config = {"search": {"keywords": ["x"], "locations": [], "sites": ["linkedin"]}}
     assert website_search_settings.local_settings(config) is None
