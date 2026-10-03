@@ -63,6 +63,13 @@ retry() {
 if [ ! -s "$CONFIG" ]; then echo "FATAL: profile config missing at $CONFIG"; exit 1; fi
 if [ ! -s "$CV" ]; then echo "FATAL: profile CV missing at $CV"; exit 1; fi
 
+# Job titles, locations, sources, posting age and min score are editable on the
+# website's Job Search page. Overlay them onto the local config for this run;
+# an unreachable website falls back to the local config unchanged.
+EFFECTIVE_CONFIG="$RESULTS/.effective_config.yaml"
+"$PYTHON" scripts/website_search_settings.py "$CONFIG" "$EFFECTIVE_CONFIG" --profile "$PROFILE" || exit 1
+CONFIG="$EFFECTIVE_CONFIG"
+
 if [ -s "$RESULTS/.pending_upload.csv" ]; then
     retry "pending website upload" "$PYTHON" scripts/website_job_sync.py upload "$RESULTS/.pending_upload.csv" --profile "$PROFILE" || exit 1
     /bin/rm -f -- "$RESULTS/.pending_upload.csv"
