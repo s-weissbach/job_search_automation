@@ -24,3 +24,11 @@ Seniority rules:
 - Scientist, Senior Scientist, Principal Scientist, Staff and technical-lead individual-contributor roles can match.
 
 Classify the employer sector independently. Scores should represent raw candidate fit; the importing program applies the existing non-industry penalty. Keep reasoning to one or two specific sentences. Name concrete matching skills and concrete concerns rather than generic statements.
+
+Salary extraction:
+
+- Extract compensation only when the posting explicitly states it. Never estimate from title, seniority, company, location, or market norms.
+- `salary_min` and `salary_max` are plain numeric amounts, with abbreviations expanded (`120k` becomes `120000`). A single stated amount may use the same value for both.
+- `salary_currency` is the explicit ISO currency code (`CHF`, `EUR`, `GBP`, `USD`, etc.). Convert an unambiguous currency symbol only when the posting/location makes the currency certain; otherwise return null numeric fields.
+- `salary_period` is one of `hour`, `day`, `month`, or `year`, only when explicit or unambiguous from phrases such as “annual salary”.
+- `salary_text` preserves the short source phrase, including bonus/equity language when present. If no compensation is disclosed, return null for every salary field.

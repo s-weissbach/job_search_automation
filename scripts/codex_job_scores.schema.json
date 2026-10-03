@@ -10,6 +10,14 @@
         "properties": {
           "job_id": { "type": "string" },
           "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "salary_min": { "type": ["number", "null"], "minimum": 0 },
+          "salary_max": { "type": ["number", "null"], "minimum": 0 },
+          "salary_currency": { "type": ["string", "null"] },
+          "salary_period": {
+            "type": ["string", "null"],
+            "enum": ["hour", "day", "month", "year", null]
+          },
+          "salary_text": { "type": ["string", "null"] },
           "job_sector": {
             "type": "string",
             "enum": ["industry", "academia", "government", "nonprofit", "other"]
@@ -31,7 +39,8 @@
           }
         },
         "required": [
-          "job_id", "score", "job_sector", "seniority_match", "reasoning",
+          "job_id", "score", "salary_min", "salary_max", "salary_currency",
+          "salary_period", "salary_text", "job_sector", "seniority_match", "reasoning",
           "matching_skills", "concerns"
         ],
         "additionalProperties": false

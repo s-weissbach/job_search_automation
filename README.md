@@ -255,12 +255,25 @@ If you don't want Supabase, remove the two Supabase steps from `daily_search.yml
 | `enabled` | `true` | Apply deterministic relevance filtering before model scoring |
 | `min_relevance_score` | `7` | Minimum explainable lexical/domain relevance score |
 | `max_llm_jobs` | `40` | Maximum total jobs scored daily; candidate overflow is deferred |
+
 | `recall_audit_sample_size` | `5` | High-signal rejects sampled daily to detect false-negative gate rules |
 | `exclude_known_nonindustry` | `false` | Optional strict mode: reject companies previously identified as academia, government, or nonprofit |
 | `exclude_obvious_nonindustry` | `false` | Optional strict mode: reject obvious university, institute, NHS, and government employers |
 | `exclude_junior_roles` | `true` | Reject intern, student, PhD, trainee, and postdoc roles |
 | `exclude_management_roles` | `false` | Optional strict mode: reject director, head, VP, chief, and executive roles |
 | `exclude_explicit_seniority_mismatches` | `false` | Optional strict mode: reject Staff/Principal/lead roles that combine 5+ years with people management |
+
+### Perry cover letters and salary bands
+
+`scripts/perry_cover_letter_worker.py` polls the authenticated website queue and
+generates letters with the same localhost-only Perry model used for job scoring.
+Install `scripts/io.jobsearch.perry-coverletters.plist` as a LaunchAgent after
+the website's `supabase/job_salary_and_cover_letter_requests.sql` migration is
+applied. Candidate CVs remain local and are never added to the request queue.
+
+Every new Perry job assessment also extracts an explicitly disclosed salary
+band. Run `scripts/perry_salary_backfill.py --profile both` once to populate
+salary data for existing open jobs in both profiles.
 
 ### `output`
 

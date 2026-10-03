@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.jobsearch.perry-coverletters</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/stephanweissbach/Projects/job_search_automation/.venv/bin/python</string>
+        <string>/Users/stephanweissbach/Projects/job_search_automation/scripts/perry_cover_letter_worker.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation</string>
+    <key>StartInterval</key>
+    <integer>15</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation/logs/perry-coverletters.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/stephanweissbach/Projects/job_search_automation/logs/perry-coverletters.err.log</string>
+</dict>
+</plist>

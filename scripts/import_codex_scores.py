@@ -24,6 +24,7 @@ from src.job_dates import posting_date_or_scrape_date
 BASEL_TZ = ZoneInfo("Europe/Zurich")
 VALID_SECTORS = {"industry", "academia", "government", "nonprofit", "other"}
 VALID_SENIORITY = {"too_junior", "match", "too_senior", "unclear"}
+VALID_SALARY_PERIODS = {"hour", "day", "month", "year"}
 
 
 def _read_queue(path: Path) -> list[dict]:
@@ -56,6 +57,15 @@ def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
             raise ValueError(f"Invalid seniority_match for {job_id}")
         if not isinstance(result.get("matching_skills"), list) or not isinstance(result.get("concerns"), list):
             raise ValueError(f"Skills and concerns must be arrays for {job_id}")
+        for field in ("salary_min", "salary_max"):
+            value = result.get(field)
+            if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0):
+                raise ValueError(f"Invalid {field} for {job_id}")
+        if result.get("salary_period") is not None and result.get("salary_period") not in VALID_SALARY_PERIODS:
+            raise ValueError(f"Invalid salary_period for {job_id}")
+        for field in ("salary_currency", "salary_text"):
+            if result.get(field) is not None and not isinstance(result.get(field), str):
+                raise ValueError(f"Invalid {field} for {job_id}")
         by_id[job_id] = {**result, "job_id": job_id}
 
     actual = set(by_id)
@@ -88,11 +98,16 @@ def main() -> None:
     if store_path.exists():
         existing = pd.read_csv(store_path)
         columns = existing.columns.tolist()
+        for column in ("salary_min", "salary_max", "salary_currency", "salary_period", "salary_text", "salary_checked_at"):
+            if column not in columns:
+                columns.append(column)
         existing_urls = set(existing.get("job_url", pd.Series(dtype=str)).dropna().astype(str))
     else:
         columns = [
             "job_url", "title", "company", "location", "site", "date_posted",
             "fit_score", "job_sector", "seniority_match", "fit_reasoning",
+            "salary_min", "salary_max", "salary_currency", "salary_period", "salary_text",
+            "salary_checked_at",
             "matching_skills", "concerns", "assessed_at", "is_active",
             "last_active_check", "description",
         ]
@@ -117,6 +132,12 @@ def main() -> None:
             "site": source.get("site", ""),
             "date_posted": posting_date_or_scrape_date(source.get("date_posted"), assessed_at),
             "fit_score": fit_score,
+            "salary_min": result.get("salary_min"),
+            "salary_max": result.get("salary_max"),
+            "salary_currency": result.get("salary_currency"),
+            "salary_period": result.get("salary_period"),
+            "salary_text": result.get("salary_text"),
+            "salary_checked_at": assessed_at,
             "job_sector": sector,
             "seniority_match": result["seniority_match"],
             "fit_reasoning": result["reasoning"],
