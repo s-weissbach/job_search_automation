@@ -53,8 +53,13 @@ SALARY_SIGNAL = re.compile(
 
 
 def has_salary_signal(job: dict) -> bool:
-    """High-recall gate; Perry remains responsible for every extraction."""
-    return bool(SALARY_SIGNAL.search(str(job.get("description") or "")))
+    """Find a numeric compensation disclosure; Perry performs extraction."""
+    text = str(job.get("description") or "")
+    for match in SALARY_SIGNAL.finditer(text):
+        nearby = text[max(0, match.start() - 180):match.end() + 180]
+        if re.search(r"\d", nearby):
+            return True
+    return False
 
 
 def salary_row(job: dict, salary: dict | None = None) -> dict:
