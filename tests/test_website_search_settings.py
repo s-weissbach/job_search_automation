@@ -28,26 +28,25 @@ def test_apply_settings_overrides_only_editable_fields():
     merged = website_search_settings.apply_settings(CONFIG, {
         "keywords": ["translational scientist"],
         "locations": ["Switzerland", "Germany"],
-        "sites": ["indeed"],  # stale value from an older website version
+        # Stale values saved by older website versions must be ignored.
+        "sites": ["indeed"],
         "hours_old": 24,
         "min_score": 80,
     })
     assert merged["search"]["keywords"] == ["translational scientist"]
     assert merged["search"]["locations"] == ["Switzerland", "Germany"]
     assert merged["search"]["sites"] == ["linkedin", "zip_recruiter"]
-    assert merged["search"]["hours_old"] == 24
+    assert merged["search"]["hours_old"] == 48
     assert merged["search"]["location_city_map"] == {"Basel": "Switzerland"}
-    assert merged["assessment"] == {"min_score": 80, "industry_malus": 15}
+    assert merged["assessment"] == {"min_score": 65, "industry_malus": 15}
     assert merged["prefilter"] == {"enabled": True}
     assert CONFIG["search"]["keywords"] == ["data scientist"]
 
 
-def test_local_settings_leaves_sources_local():
+def test_local_settings_uploads_only_titles_and_locations():
     assert website_search_settings.local_settings(CONFIG) == {
         "keywords": ["data scientist"],
         "locations": ["Basel"],
-        "hours_old": 48,
-        "min_score": 65,
     }
 
 

@@ -17,7 +17,7 @@ The default owner run automatically starts Julia's isolated run when both of
 her private files exist. Results and score caches stay under
 `results/<profile>/`, and website synchronization includes the profile ID.
 
-Job titles, locations, maximum posting age and minimum score can also
+Job titles and locations can also
 be edited on the website's Job Search page. `scripts/website_search_settings.py`
 overlays them onto the local config at the start of every run (falling back to
 the local config if the website is unreachable) and seeds the website from the

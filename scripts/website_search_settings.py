@@ -2,11 +2,10 @@
 """Overlay the website-edited search settings onto a profile's local config.
 
 The Job Search page on stephanweissbach.dev lets each profile edit its job
-titles, locations, maximum posting age and minimum score. Before a
-run, this script fetches those settings and writes an effective config that
-the rest of the pipeline reads instead of config.yaml. Only those five fields
-are overridden; everything else (sources, prefilter tuning, portals, ...)
-stays local.
+titles and locations. Before a run, this script fetches those settings and
+writes an effective config that the rest of the pipeline reads instead of
+config.yaml. Only those two fields are overridden; everything else (sources,
+posting age, minimum score, prefilter tuning, portals, ...) stays local.
 
 The website is never a hard dependency: if it is unreachable, the local
 config is used unchanged. When the website has nothing saved yet, the local
@@ -56,8 +55,6 @@ def local_settings(config: dict) -> dict | None:
     return {
         "keywords": keywords,
         "locations": locations,
-        "hours_old": int(search.get("hours_old") or 72),
-        "min_score": int((config.get("assessment") or {}).get("min_score", 60)),
     }
 
 
@@ -67,8 +64,6 @@ def apply_settings(config: dict, settings: dict) -> dict:
     search = merged.setdefault("search", {})
     search["keywords"] = list(settings["keywords"])
     search["locations"] = list(settings["locations"])
-    search["hours_old"] = int(settings["hours_old"])
-    merged.setdefault("assessment", {})["min_score"] = int(settings["min_score"])
     return merged
 
 
