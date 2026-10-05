@@ -4,6 +4,11 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="$REPO/.venv/bin/python"
+LMS="$HOME/.lmstudio/bin/lms"
+LMS_MODEL="qwen3.8-27b-mlx"
+LMS_IDENTIFIER="qwen3.8-27b-local"
+LMS_STARTED_BY_JOB=0
+LMS_SERVICE_PID=""
 PROFILE="${JOB_SEARCH_PROFILE:-owner}"
 if [ "$PROFILE" = "owner" ]; then
     CONFIG="$REPO/config.yaml"
@@ -26,6 +31,13 @@ notify_failure() {
 
 cleanup() {
     rc=$?
+    if [ "$LMS_STARTED_BY_JOB" = "1" ]; then
+        "$LMS" unload "$LMS_IDENTIFIER" >/dev/null 2>&1 || true
+        "$LMS" server stop >/dev/null 2>&1 || true
+        if [ -n "$LMS_SERVICE_PID" ] && /bin/kill -0 "$LMS_SERVICE_PID" 2>/dev/null; then
+            /bin/kill -TERM "$LMS_SERVICE_PID" 2>/dev/null || true
+        fi
+    fi
     /bin/rm -f -- "$LOCK_DIR/pid" 2>/dev/null || true
     /bin/rmdir "$LOCK_DIR" 2>/dev/null || true
     if [ $rc -ne 0 ]; then notify_failure "exit $rc${LOG:+ - $(basename "$LOG")}"; fi
@@ -48,8 +60,19 @@ exec > >(/usr/bin/tee -a "$LOG") 2>&1
 echo "=== Perry job search: $PROFILE ($(date)) ==="
 
 if [ ! -x "$PYTHON" ]; then echo "FATAL: Python environment not found at $PYTHON"; exit 1; fi
+if ! /usr/bin/curl -fsS --max-time 5 http://127.0.0.1:1234/v1/models >/dev/null; then
+    if [ ! -x "$LMS" ]; then echo "FATAL: LM Studio headless CLI not found at $LMS"; exit 1; fi
+    echo "Starting headless local model service (no LM Studio window)..."
+    lms_start_output="$("$LMS" daemon up --json)" || exit 1
+    printf '%s\n' "$lms_start_output"
+    LMS_SERVICE_PID="$(printf '%s\n' "$lms_start_output" | /usr/bin/sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1/p' | /usr/bin/tail -1)"
+    if [ -z "$LMS_SERVICE_PID" ]; then echo "FATAL: could not determine headless model service PID"; exit 1; fi
+    LMS_STARTED_BY_JOB=1
+    "$LMS" server start --port 1234 --bind 127.0.0.1 || exit 1
+    "$LMS" load "$LMS_MODEL" --identifier "$LMS_IDENTIFIER" --context-length 32768 --ttl 900 --yes || exit 1
+fi
 if ! /usr/bin/curl -fsS --max-time 10 http://127.0.0.1:1234/v1/models >/dev/null; then
-    echo "FATAL: Perry's local LM Studio model endpoint is unavailable"; exit 1
+    echo "FATAL: Perry's headless local model endpoint is unavailable"; exit 1
 fi
 
 retry() {
