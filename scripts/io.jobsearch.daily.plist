@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Daily local job search, every day 05:00. Install:
+  Daily local job search, every day 00:00. Install:
       cp scripts/io.jobsearch.daily.plist ~/Library/LaunchAgents/
       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.jobsearch.daily.plist
   Remove with:
@@ -26,16 +26,14 @@
     <key>WorkingDirectory</key>
     <string>/Users/stephanweissbach/Projects/job_search_automation</string>
 
-    <!-- Every day 05:00 — scheduled well after pharmajob.io's own daily
-         01:00 scrape (historically completes ~03:46-03:53) so the DB is
-         normally already fresh with zero wait. The pharmajob_io.freshness_marker
-         check in src/pharmajob_client.py is the actual safety net for a
-         slow night; this time just keeps that wait short in practice.
+    <!-- Start alongside pharmajob.io at midnight. LinkedIn/Indeed discovery
+         can run while pharmajob.io scrapes; before querying its database,
+         src/pharmajob_client.py waits for the real completion marker.
          launchd re-fires a missed run on wake; cron does not. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>5</integer>
+        <integer>0</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>

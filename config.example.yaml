@@ -93,8 +93,8 @@ pharmajob_io:
   # (bounded) for it to be from today before querying — safe even if the
   # two schedules land close together. Leave unset to query immediately.
   # freshness_marker: "/path/to/pharmajob.io/.last_scrape_complete"
-  freshness_max_wait_minutes: 30
-  freshness_poll_seconds: 120
+  freshness_max_wait_minutes: 360
+  freshness_poll_seconds: 60
 
 # Direct company portal scraping via Greenhouse/Lever JSON APIs and Workday CXS API.
 company_portals:

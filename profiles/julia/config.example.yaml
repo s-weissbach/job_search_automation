@@ -84,6 +84,9 @@ output:
 pharmajob_io:
   enabled: true
   base_url: "http://127.0.0.1:8000"
+  freshness_marker: "/Users/stephanweissbach/Projects/pharmajob.io/.last_scrape_complete"
+  freshness_max_wait_minutes: 360
+  freshness_poll_seconds: 60
   keywords:
     - "scientist"
     - "immunology"
