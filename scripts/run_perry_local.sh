@@ -13,15 +13,21 @@ PROFILE="${JOB_SEARCH_PROFILE:-owner}"
 if [ "$PROFILE" = "owner" ]; then
     CONFIG="$REPO/config.yaml"
     CV="$REPO/cv/cv_compressed.yaml"
+    SCORING_PROMPT="$REPO/scripts/codex_job_scoring_prompt.md"
+    SCORING_SCHEMA="$REPO/scripts/codex_job_scores.schema.json"
     RESULTS="$REPO/results"
 elif [ "$PROFILE" = "julia" ]; then
     CONFIG="$REPO/profiles/julia/config.yaml"
     CV="$REPO/profiles/julia/cv_compressed.yaml"
+    SCORING_PROMPT="$REPO/profiles/julia/scoring_prompt.md"
+    SCORING_SCHEMA="$REPO/profiles/julia/scoring_schema.json"
+    SENIORITY_POLICY_ARGS=(--seniority-policy julia-phd)
     RESULTS="$REPO/results/julia"
 else
     echo "FATAL: unsupported JOB_SEARCH_PROFILE=$PROFILE"
     exit 2
 fi
+if [ "$PROFILE" = "owner" ]; then SENIORITY_POLICY_ARGS=(); fi
 LOG=""
 LOCK_DIR="$RESULTS/.daily_perry_lock"
 
@@ -120,6 +126,7 @@ ACTIVE_UPLOAD="$RESULTS/.pending_active_status_upload.csv"
 /bin/rm -f -- "$ACTIVE_UPLOAD"
 "$PYTHON" src/active_checker.py "$RESULTS/.score_store.csv" --output "$ACTIVE_UPLOAD" \
     --max-jobs "${JOB_SEARCH_ACTIVE_CHECK_LIMIT:-250}" --min-score "${JOB_SEARCH_ACTIVE_MIN_SCORE:-60}" \
+    --stale-days "${JOB_SEARCH_ACTIVE_STALE_DAYS:-0}" \
     --low-score-cutoff "${JOB_SEARCH_LOW_SCORE_CUTOFF:-60}" \
     --low-score-expiry-days "${JOB_SEARCH_LOW_SCORE_EXPIRY_DAYS:-14}" \
     --workers "${JOB_SEARCH_ACTIVE_CHECK_WORKERS:-2}" || echo "WARNING: active-status refresh failed"
@@ -141,14 +148,30 @@ if [ "$selected" -gt 0 ]; then
     # the point of use so a profile never starts scoring against an empty server.
     ensure_model_loaded || exit 1
     "$PYTHON" scripts/perry_score.py --queue "$RESULTS/codex_queue.jsonl" --cv "$CV" \
+        --prompt "$SCORING_PROMPT" --schema "$SCORING_SCHEMA" \
+        "${SENIORITY_POLICY_ARGS[@]}" \
         --output "$RESULTS/codex_scores.json" || exit 1
     "$PYTHON" scripts/import_codex_scores.py --config "$CONFIG" \
         --queue "$RESULTS/codex_queue.jsonl" --scores "$RESULTS/codex_scores.json" \
         --scrape "$RESULTS/.scrape_cache.csv" --store "$RESULTS/.score_store.csv" \
+        "${SENIORITY_POLICY_ARGS[@]}" \
         --pending "$RESULTS/.pending_upload.csv" || exit 1
     if [ -s "$RESULTS/.pending_upload.csv" ]; then
         retry "website upload" "$PYTHON" scripts/website_job_sync.py upload "$RESULTS/.pending_upload.csv" --profile "$PROFILE" || exit 1
         /bin/rm -f -- "$RESULTS/.pending_upload.csv"
+    fi
+    # Newly imported jobs start unverified. Check every recommendation now so
+    # the website and digest never present an unchecked URL as open.
+    NEW_ACTIVE_UPLOAD="$RESULTS/.pending_new_active_status_upload.csv"
+    /bin/rm -f -- "$NEW_ACTIVE_UPLOAD"
+    "$PYTHON" src/active_checker.py "$RESULTS/.score_store.csv" --output "$NEW_ACTIVE_UPLOAD" \
+        --max-jobs "${JOB_SEARCH_ACTIVE_CHECK_LIMIT:-250}" --min-score "${JOB_SEARCH_ACTIVE_MIN_SCORE:-60}" \
+        --stale-days 0 --low-score-cutoff "${JOB_SEARCH_LOW_SCORE_CUTOFF:-60}" \
+        --low-score-expiry-days "${JOB_SEARCH_LOW_SCORE_EXPIRY_DAYS:-14}" \
+        --workers "${JOB_SEARCH_ACTIVE_CHECK_WORKERS:-2}" || echo "WARNING: new-job active-status check failed"
+    if [ -s "$NEW_ACTIVE_UPLOAD" ]; then
+        retry "new-job active-status website upload" "$PYTHON" scripts/website_job_sync.py upload "$NEW_ACTIVE_UPLOAD" --profile "$PROFILE" || exit 1
+        /bin/rm -f -- "$NEW_ACTIVE_UPLOAD"
     fi
 else
     echo "No new jobs passed the relevance gate; skipping Perry scoring."

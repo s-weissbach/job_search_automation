@@ -11,6 +11,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from scoring_policy import apply_scoring_policy
+
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:1234/v1/chat/completions"
 DEFAULT_MODEL = "qwen3.8-27b-local"
@@ -91,6 +93,7 @@ def main() -> None:
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--seniority-policy", choices=("julia-phd",))
     args = parser.parse_args()
 
     jobs = read_jsonl(Path(args.queue))
@@ -108,7 +111,12 @@ def main() -> None:
     for start in range(0, len(jobs), size):
         batch = jobs[start:start + size]
         print(f"Scoring jobs {start + 1}-{start + len(batch)} of {len(jobs)} with Perry...", flush=True)
-        assessments.extend(score_batch(args.endpoint, args.model, system, cv_text, schema, batch))
+        scored = score_batch(args.endpoint, args.model, system, cv_text, schema, batch)
+        jobs_by_id = {str(job["job_id"]): job for job in batch}
+        assessments.extend(
+            apply_scoring_policy(jobs_by_id[str(item["job_id"])], item, args.seniority_policy)
+            for item in scored
+        )
 
     Path(args.output).write_text(json.dumps({"assessments": assessments}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Perry scored {len(assessments)} jobs.")

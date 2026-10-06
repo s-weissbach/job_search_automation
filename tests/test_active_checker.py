@@ -35,6 +35,30 @@ class ActiveCheckerTests(unittest.TestCase):
             "unknown",
         )
 
+    def test_past_application_deadline_expires_still_live_page(self):
+        self.assertEqual(
+            _classify_response(
+                "https://example.com/job/123",
+                200,
+                "https://example.com/job/123",
+                "The job posting is presumably online until August 31st, 2026.",
+                today=date(2026, 10, 6),
+            ),
+            "expired",
+        )
+
+    def test_future_application_deadline_keeps_page_active(self):
+        self.assertEqual(
+            _classify_response(
+                "https://example.com/job/123",
+                200,
+                "https://example.com/job/123",
+                "Applications are open until October 31, 2026.",
+                today=date(2026, 10, 6),
+            ),
+            "active",
+        )
+
     def test_low_score_jobs_expire_at_two_weeks_without_url_checks(self):
         df = pd.DataFrame([
             {"fit_score": 59, "date_posted": "2026-09-04", "assessed_at": "2026-09-04", "is_active": "active", "last_active_check": ""},

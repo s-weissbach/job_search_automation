@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from src.html_reporter import generate_html_report
 from src.job_dates import posting_date_or_scrape_date
+from scripts.scoring_policy import apply_scoring_policy
 
 
 BASEL_TZ = ZoneInfo("Europe/Zurich")
@@ -31,12 +32,13 @@ def _read_queue(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
+def _validate(queue: list[dict], payload: dict, seniority_policy: str | None = None) -> dict[str, dict]:
     assessments = payload.get("assessments")
     if not isinstance(assessments, list):
         raise ValueError("Codex output must contain an assessments array")
 
     expected = {str(job["job_id"]) for job in queue}
+    queued_by_id = {str(job["job_id"]): job for job in queue}
     by_id: dict[str, dict] = {}
     for result in assessments:
         raw_job_id = str(result.get("job_id") or "")
@@ -48,6 +50,9 @@ def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
                 print(f"  Corrected truncated model job_id {raw_job_id!r} -> {job_id!r}")
         if not job_id or job_id in by_id:
             raise ValueError(f"Missing or duplicate job_id: {job_id!r}")
+        if job_id not in expected:
+            raise ValueError(f"Unexpected job_id: {job_id!r}")
+        result = apply_scoring_policy(queued_by_id[job_id], result, seniority_policy)
         score = result.get("score")
         if not isinstance(score, int) or not 0 <= score <= 100:
             raise ValueError(f"Invalid score for {job_id}: {score!r}")
@@ -55,6 +60,10 @@ def _validate(queue: list[dict], payload: dict) -> dict[str, dict]:
             raise ValueError(f"Invalid job_sector for {job_id}")
         if result.get("seniority_match") not in VALID_SENIORITY:
             raise ValueError(f"Invalid seniority_match for {job_id}")
+        components = result.get("score_components")
+        if components is not None:
+            if not isinstance(components, dict) or any(not isinstance(value, int) for value in components.values()):
+                raise ValueError(f"Invalid score_components for {job_id}")
         if not isinstance(result.get("matching_skills"), list) or not isinstance(result.get("concerns"), list):
             raise ValueError(f"Skills and concerns must be arrays for {job_id}")
         for field in ("salary_min", "salary_max"):
@@ -84,11 +93,13 @@ def main() -> None:
     parser.add_argument("--scrape", default="results/.scrape_cache.csv")
     parser.add_argument("--store", default="results/.score_store.csv")
     parser.add_argument("--pending", default="results/.pending_upload.csv")
+    parser.add_argument("--replace-existing", action="store_true", help="Replace queued URLs in the score store instead of skipping them")
+    parser.add_argument("--seniority-policy", choices=("julia-phd",))
     args = parser.parse_args()
 
     queue = _read_queue(Path(args.queue))
     payload = json.loads(Path(args.scores).read_text(encoding="utf-8"))
-    by_id = _validate(queue, payload)
+    by_id = _validate(queue, payload, args.seniority_policy)
     config = yaml.safe_load(Path(args.config).read_text()) or {}
     industry_malus = int((config.get("assessment") or {}).get("industry_malus", 15))
 
@@ -119,7 +130,7 @@ def main() -> None:
         source = scrape_by_url.get(str(queued.get("job_url")), queued)
         result = by_id[str(queued["job_id"])]
         url = str(source.get("job_url") or queued.get("job_url") or "")
-        if url in existing_urls:
+        if url in existing_urls and not args.replace_existing:
             continue
         raw_score = int(result["score"])
         sector = str(result["job_sector"])
@@ -144,7 +155,9 @@ def main() -> None:
             "matching_skills": "; ".join(str(value) for value in result["matching_skills"]),
             "concerns": "; ".join(str(value) for value in result["concerns"]),
             "assessed_at": assessed_at,
-            "is_active": "active",
+            # A successful scrape is not proof that the listing is still open.
+            # The runner verifies URLs after import and uploads that verdict.
+            "is_active": "unknown",
             "last_active_check": "",
             "description": source.get("description", ""),
         }
@@ -153,7 +166,12 @@ def main() -> None:
 
     new_df = pd.DataFrame(rows).reindex(columns=columns)
     if not new_df.empty:
-        new_df.to_csv(store_path, mode="a", header=not store_path.exists(), index=False)
+        if args.replace_existing and store_path.exists():
+            replaced_urls = set(new_df["job_url"].dropna().astype(str))
+            retained = existing[~existing["job_url"].astype(str).isin(replaced_urls)].reindex(columns=columns)
+            pd.concat([retained, new_df], ignore_index=True).to_csv(store_path, index=False)
+        else:
+            new_df.to_csv(store_path, mode="a", header=not store_path.exists(), index=False)
     new_df.to_csv(args.pending, index=False)
 
     report_path = Path((config.get("output") or {}).get("results_dir", "results")) / "report.html"

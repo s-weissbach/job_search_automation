@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
+import re
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -29,9 +30,37 @@ _LINKEDIN_EXPIRED_MARKERS = (
     "no longer accepting applications",
     "this job has expired",
 )
+_GENERAL_EXPIRED_MARKERS = (
+    "position has been filled",
+    "position is no longer available",
+    "vacancy is no longer available",
+    "applications are closed",
+    "application period has ended",
+)
+_CLOSING_DATE = re.compile(
+    r"(?:online|open|apply|applications?).{0,50}(?:until|through|closes?|deadline)\s*[:\-]?\s*"
+    r"([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,)?\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})",
+    re.I,
+)
 
 
-def _classify_response(source_url: str, status_code: int, final_url: str, body: str) -> str:
+def _past_explicit_closing_date(body: str, today: date) -> bool:
+    """Recognize an explicit application closing date on a still-live page."""
+    for raw in _CLOSING_DATE.findall(body):
+        cleaned = re.sub(r"(?<=\d)(?:st|nd|rd|th)\b", "", raw, flags=re.I)
+        parsed = pd.to_datetime(cleaned, errors="coerce", dayfirst=False)
+        if not pd.isna(parsed) and parsed.date() < today:
+            return True
+    return False
+
+
+def _classify_response(
+    source_url: str,
+    status_code: int,
+    final_url: str,
+    body: str,
+    today: date | None = None,
+) -> str:
     """Classify one HTTP response without treating access blocks as closures."""
     if status_code in {404, 410}:
         return "expired"
@@ -40,13 +69,18 @@ def _classify_response(source_url: str, status_code: int, final_url: str, body: 
     if status_code >= 400:
         return "unknown"
 
+    normalized_body = body.casefold()
+    if any(marker in normalized_body for marker in _GENERAL_EXPIRED_MARKERS):
+        return "expired"
+    if _past_explicit_closing_date(body, today or datetime.now(_BASEL_TZ).date()):
+        return "expired"
+
     source_host = urlsplit(source_url).netloc.casefold()
     if "linkedin.com" in source_host:
         final = urlsplit(final_url)
         tracking = parse_qs(final.query).get("trk", [])
         if "expired_jd_redirect" in tracking:
             return "expired"
-        normalized_body = body.casefold()
         if any(marker in normalized_body for marker in _LINKEDIN_EXPIRED_MARKERS):
             return "expired"
         # A live public listing stays on /jobs/view/<id>. LinkedIn redirects
@@ -56,12 +90,20 @@ def _classify_response(source_url: str, status_code: int, final_url: str, body: 
     return "active" if status_code < 400 else "unknown"
 
 
-def _check_url(url: str, timeout: int = 10) -> str:
+def _check_url(url: str, timeout: int = 10, known_description: str = "") -> str:
     """Return 'active', 'expired', or 'unknown'."""
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=timeout,
                             allow_redirects=True)
-        return _classify_response(url, resp.status_code, resp.url, resp.text)
+        result = _classify_response(url, resp.status_code, resp.url, resp.text)
+        # Some JavaScript-driven employer pages omit the closing-date text in
+        # the later HTTP response. Retain the explicit deadline captured by
+        # the scraper as evidence that a still-accessible page is closed.
+        if result == "active" and _past_explicit_closing_date(
+            known_description, datetime.now(_BASEL_TZ).date()
+        ):
+            return "expired"
+        return result
     except Exception:
         return "unknown"
 
@@ -171,17 +213,22 @@ def check_active_jobs(
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = {
-            pool.submit(_check_url, str(df.at[idx, "job_url"]), timeout): idx
+            pool.submit(
+                _check_url,
+                str(df.at[idx, "job_url"]),
+                timeout,
+                str(df.at[idx, "description"]) if "description" in df.columns else "",
+            ): idx
             for idx in to_check.index
             if str(df.at[idx, "job_url"]) not in {"", "nan"}
         }
         for future in as_completed(futures):
             idx = futures[future]
             result = future.result()
-            previous = str(df.at[idx, "is_active"] or "").casefold()
-            # A transient block must not turn a known state into a false one.
-            if result != "unknown" or previous not in {"active", "true", "expired", "false"}:
-                df.at[idx, "is_active"] = result
+            # "Open" means positively verified on this check. A block or
+            # ambiguous redirect becomes unknown rather than preserving a
+            # stale active badge that may now be wrong.
+            df.at[idx, "is_active"] = result
             df.at[idx, "last_active_check"] = today.isoformat()
             checked += 1
             checked_indices.append(idx)
