@@ -29,6 +29,23 @@ notify_failure() {
     /usr/bin/osascript -e "display notification \"$1\" with title \"Perry job search failed\" sound name \"Basso\"" >/dev/null 2>&1
 }
 
+model_is_loaded() {
+    /usr/bin/curl -fsS --max-time 10 http://127.0.0.1:1234/v1/models | "$PYTHON" -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+sys.exit(0 if any(model.get("id") == "qwen3.8-27b-local" for model in payload.get("data", [])) else 1)
+' >/dev/null 2>&1
+}
+
+ensure_model_loaded() {
+    if model_is_loaded; then return 0; fi
+    if [ ! -x "$LMS" ]; then echo "FATAL: LM Studio headless CLI not found at $LMS"; return 1; fi
+    echo "Loading Perry's local model..."
+    "$LMS" load "$LMS_MODEL" --identifier "$LMS_IDENTIFIER" --context-length 32768 --yes
+}
+
 cleanup() {
     rc=$?
     if [ "$LMS_STARTED_BY_JOB" = "1" ]; then
@@ -69,11 +86,11 @@ if ! /usr/bin/curl -fsS --max-time 5 http://127.0.0.1:1234/v1/models >/dev/null;
     if [ -z "$LMS_SERVICE_PID" ]; then echo "FATAL: could not determine headless model service PID"; exit 1; fi
     LMS_STARTED_BY_JOB=1
     "$LMS" server start --port 1234 --bind 127.0.0.1 || exit 1
-    "$LMS" load "$LMS_MODEL" --identifier "$LMS_IDENTIFIER" --context-length 32768 --ttl 900 --yes || exit 1
 fi
 if ! /usr/bin/curl -fsS --max-time 10 http://127.0.0.1:1234/v1/models >/dev/null; then
     echo "FATAL: Perry's headless local model endpoint is unavailable"; exit 1
 fi
+ensure_model_loaded || exit 1
 
 retry() {
     label="$1"; shift; attempt=1
@@ -120,6 +137,9 @@ if [ "${JOB_SEARCH_RESUME:-0}" = "1" ] && [ -s "$RESULTS/.scrape_cache.csv" ]; t
     --summary "$RESULTS/codex_queue_summary.json" || exit 1
 selected="$("$PYTHON" -c "import json; print(json.load(open('$RESULTS/codex_queue_summary.json'))['selected'])")"
 if [ "$selected" -gt 0 ]; then
+    # Scraping can take longer than a model's prior idle timeout. Re-check at
+    # the point of use so a profile never starts scoring against an empty server.
+    ensure_model_loaded || exit 1
     "$PYTHON" scripts/perry_score.py --queue "$RESULTS/codex_queue.jsonl" --cv "$CV" \
         --output "$RESULTS/codex_scores.json" || exit 1
     "$PYTHON" scripts/import_codex_scores.py --config "$CONFIG" \
