@@ -35,6 +35,39 @@ class ActiveCheckerTests(unittest.TestCase):
             "unknown",
         )
 
+    def test_removed_workday_posting_expires_despite_http_200(self):
+        self.assertEqual(
+            _classify_response(
+                "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Basel/closed-job",
+                200,
+                "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Basel/closed-job",
+                "window.workday = { postingAvailable: false };",
+            ),
+            "expired",
+        )
+
+    def test_available_workday_posting_is_active(self):
+        self.assertEqual(
+            _classify_response(
+                "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Basel/open-job",
+                200,
+                "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Basel/open-job",
+                'window.workday = { "postingAvailable": true };',
+            ),
+            "active",
+        )
+
+    def test_workday_shell_without_availability_is_unknown(self):
+        self.assertEqual(
+            _classify_response(
+                "https://example.wd3.myworkdayjobs.com/site/job/ambiguous",
+                200,
+                "https://example.wd3.myworkdayjobs.com/site/job/ambiguous",
+                "generic application shell",
+            ),
+            "unknown",
+        )
+
     def test_past_application_deadline_expires_still_live_page(self):
         self.assertEqual(
             _classify_response(

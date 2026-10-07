@@ -42,6 +42,10 @@ _CLOSING_DATE = re.compile(
     r"([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,)?\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})",
     re.I,
 )
+_WORKDAY_POSTING_AVAILABLE = re.compile(
+    r'''["']?postingAvailable["']?\s*:\s*(true|false)\b''',
+    re.I,
+)
 
 
 def _past_explicit_closing_date(body: str, today: date) -> bool:
@@ -76,6 +80,15 @@ def _classify_response(
         return "expired"
 
     source_host = urlsplit(source_url).netloc.casefold()
+    if "myworkdayjobs.com" in source_host:
+        availability = _WORKDAY_POSTING_AVAILABLE.search(body)
+        if availability:
+            return "active" if availability.group(1).casefold() == "true" else "expired"
+        # Workday serves a generic HTTP-200 shell for both live and removed
+        # postings. Without its explicit availability flag, 200 is not proof
+        # that the vacancy is open.
+        return "unknown"
+
     if "linkedin.com" in source_host:
         final = urlsplit(final_url)
         tracking = parse_qs(final.query).get("trk", [])
@@ -146,6 +159,7 @@ def check_active_jobs(
     low_score_cutoff: int = _LOW_SCORE_CUTOFF,
     low_score_expiry_days: int = _LOW_SCORE_EXPIRY_DAYS,
     output_path: str | Path | None = None,
+    only_url: str | None = None,
 ) -> int:
     """Check active status for jobs in the score store that haven't been checked recently.
 
@@ -197,7 +211,11 @@ def check_active_jobs(
     status = df["is_active"].fillna("").astype(str).str.casefold()
     eligible = status.isin({"", "active", "true", "unknown", "nan"})
     scores = pd.to_numeric(df.get("fit_score", pd.Series(index=df.index, dtype=float)), errors="coerce").fillna(-1)
-    candidates = df[df.apply(needs_check, axis=1) & eligible & (scores >= min_score)].copy()
+    if only_url is not None:
+        candidate_mask = eligible & df["job_url"].astype(str).eq(only_url)
+    else:
+        candidate_mask = df.apply(needs_check, axis=1) & eligible & (scores >= min_score)
+    candidates = df[candidate_mask].copy()
     candidates["_last_check_sort"] = pd.to_datetime(candidates["last_active_check"], errors="coerce")
     candidates["_score_sort"] = scores.loc[candidates.index]
     to_check = candidates.sort_values(
@@ -263,6 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--low-score-cutoff", type=int, default=_LOW_SCORE_CUTOFF)
     parser.add_argument("--low-score-expiry-days", type=int, default=_LOW_SCORE_EXPIRY_DAYS)
+    parser.add_argument("--url", help="Check only this exact job URL, regardless of the normal batch size")
     args = parser.parse_args()
     check_active_jobs(
         args.score_store,
@@ -274,4 +293,5 @@ if __name__ == "__main__":
         low_score_cutoff=args.low_score_cutoff,
         low_score_expiry_days=args.low_score_expiry_days,
         output_path=args.output,
+        only_url=args.url,
     )
