@@ -34,10 +34,34 @@ def validate(batch: list[dict], payload: dict) -> list[dict]:
     if not isinstance(assessments, list):
         raise ValueError("missing assessments array")
     expected = {str(job["job_id"]) for job in batch}
+    repaired = []
+    for item in assessments:
+        if not isinstance(item, dict):
+            repaired.append(item)
+            continue
+        raw_job_id = str(item.get("job_id") or "")
+        if raw_job_id not in expected:
+            prefix_matches = [
+                candidate for candidate in expected
+                if len(_common_prefix(raw_job_id, candidate)) >= 12
+            ]
+            if len(prefix_matches) == 1:
+                item = {**item, "job_id": prefix_matches[0]}
+                print(f"  Corrected model job_id {raw_job_id!r} -> {prefix_matches[0]!r}", flush=True)
+        repaired.append(item)
+    assessments = repaired
     found = {str(item.get("job_id") or "") for item in assessments if isinstance(item, dict)}
     if found != expected or len(assessments) != len(batch):
         raise ValueError(f"assessment IDs differ: missing={sorted(expected - found)}, extra={sorted(found - expected)}")
     return assessments
+
+
+def _common_prefix(left: str, right: str) -> str:
+    end = 0
+    for end, (left_char, right_char) in enumerate(zip(left, right), start=1):
+        if left_char != right_char:
+            return left[:end - 1]
+    return left[:end] if left and right else ""
 
 
 def score_batch(endpoint: str, model: str, system: str, cv_text: str, schema: dict,
