@@ -97,6 +97,7 @@ def main() -> None:
     args = parser.parse_args()
 
     jobs = read_jsonl(Path(args.queue))
+    output_path = Path(args.output)
     cv_text = Path(args.cv).read_text(encoding="utf-8")
     schema = json.loads(Path(args.schema).read_text(encoding="utf-8"))
     rubric = Path(args.prompt).read_text(encoding="utf-8")
@@ -106,19 +107,40 @@ def main() -> None:
         + rubric
     )
 
-    assessments: list[dict] = []
+    expected_ids = {str(job["job_id"]) for job in jobs}
+    completed: dict[str, dict] = {}
+    if output_path.exists():
+        try:
+            prior = json.loads(output_path.read_text(encoding="utf-8")).get("assessments", [])
+            completed = {
+                str(item["job_id"]): item
+                for item in prior
+                if isinstance(item, dict) and str(item.get("job_id") or "") in expected_ids
+            }
+        except (OSError, ValueError, TypeError, KeyError):
+            completed = {}
+    if completed:
+        print(f"Resuming Perry scoring with {len(completed)}/{len(jobs)} jobs checkpointed.", flush=True)
+
+    pending_jobs = [job for job in jobs if str(job["job_id"]) not in completed]
     size = max(1, min(args.batch_size, 8))
-    for start in range(0, len(jobs), size):
-        batch = jobs[start:start + size]
-        print(f"Scoring jobs {start + 1}-{start + len(batch)} of {len(jobs)} with Perry...", flush=True)
+    for start in range(0, len(pending_jobs), size):
+        batch = pending_jobs[start:start + size]
+        completed_before = len(completed)
+        print(f"Scoring jobs {completed_before + 1}-{completed_before + len(batch)} of {len(jobs)} with Perry...", flush=True)
         scored = score_batch(args.endpoint, args.model, system, cv_text, schema, batch)
         jobs_by_id = {str(job["job_id"]): job for job in batch}
-        assessments.extend(
-            apply_scoring_policy(jobs_by_id[str(item["job_id"])], item, args.seniority_policy)
-            for item in scored
+        for item in scored:
+            job_id = str(item["job_id"])
+            completed[job_id] = apply_scoring_policy(jobs_by_id[job_id], item, args.seniority_policy)
+        checkpoint = [completed[str(job["job_id"])] for job in jobs if str(job["job_id"]) in completed]
+        output_path.write_text(
+            json.dumps({"assessments": checkpoint}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
 
-    Path(args.output).write_text(json.dumps({"assessments": assessments}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    assessments = [completed[str(job["job_id"])] for job in jobs]
+    output_path.write_text(json.dumps({"assessments": assessments}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Perry scored {len(assessments)} jobs.")
 
 

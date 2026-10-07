@@ -2,7 +2,7 @@ import difflib
 import re
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -182,6 +182,13 @@ def fetch_pharmajob_jobs(config: dict) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["job_url"], keep="first")
     df = df.drop_duplicates(subset=["title", "company"], keep="first")
+    max_age_days = pj_cfg.get("max_age_days")
+    if max_age_days is not None:
+        posted = pd.to_datetime(df["date_posted"], errors="coerce")
+        cutoff = pd.Timestamp(date.today() - timedelta(days=max(0, int(max_age_days))))
+        before = len(df)
+        df = df[posted.notna() & (posted >= cutoff)].copy()
+        print(f"  pharmajob.io recent-window filter kept {len(df)}/{before} jobs (last {max_age_days} days)")
     return df
 
 

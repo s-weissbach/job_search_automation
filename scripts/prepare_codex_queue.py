@@ -56,10 +56,14 @@ def main() -> None:
     prefilter_config = config.get("prefilter") or {}
     jobs = pd.read_csv(args.scrape).fillna("")
     store = pd.read_csv(args.store).fillna("") if Path(args.store).exists() else pd.DataFrame()
+    rescore_open = bool(prefilter_config.get("rescore_open_jobs", False))
 
     cached_urls: set[str] = set()
     cached_identities: set[str] = set()
     cached_role_identities: set[str] = set()
+    open_cached_urls: set[str] = set()
+    open_cached_identities: set[str] = set()
+    open_cached_role_identities: set[str] = set()
     company_sectors: dict[str, str] = {}
     if not store.empty:
         for _, row in store.iterrows():
@@ -72,6 +76,19 @@ def main() -> None:
             sector = str(row.get("job_sector") or "").strip().casefold()
             if company and sector:
                 company_sectors[company] = sector
+            if rescore_open and str(row.get("is_active") or "").strip().casefold() in {"active", "true"}:
+                open_cached_urls.add(canonical_job_url(row.get("job_url")))
+                open_cached_identities.add(normalized_identity(row.get("title"), row.get("company"), row.get("location")))
+                if role_identity:
+                    open_cached_role_identities.add(role_identity)
+
+    if rescore_open and not store.empty:
+        status = store.get("is_active", pd.Series(index=store.index, dtype="object")).astype(str).str.casefold()
+        open_store = store[status.isin({"active", "true"})].copy()
+        open_store["_force_rescore"] = True
+        jobs = jobs.copy()
+        jobs["_force_rescore"] = False
+        jobs = pd.concat([jobs, open_store], ignore_index=True, sort=False).fillna("")
 
     seen_urls: set[str] = set()
     seen_identities: set[str] = set()
@@ -87,8 +104,13 @@ def main() -> None:
         url = canonical_job_url(raw.get("job_url"))
         identity = normalized_identity(raw.get("title"), raw.get("company"), raw.get("location"))
         role_identity = normalized_role_identity(raw.get("title"), raw.get("company"))
+        force_rescore = bool(raw.get("_force_rescore")) or (
+            (url and url in open_cached_urls)
+            or (identity and identity in open_cached_identities)
+            or (role_identity and role_identity in open_cached_role_identities)
+        )
 
-        if ((url and url in cached_urls) or (identity and identity in cached_identities)
+        if not force_rescore and ((url and url in cached_urls) or (identity and identity in cached_identities)
                 or (role_identity and role_identity in cached_role_identities)):
             skipped_cached += 1
             continue
@@ -110,6 +132,8 @@ def main() -> None:
         raw["prefilter_reason"] = decision.reason
         raw["prefilter_signals"] = list(decision.signals)
         raw["prefilter_tier"] = decision.tier
+        if force_rescore:
+            raw["prefilter_tier"] = "rescore_open"
         audit_row = {
             "job_id": raw["job_id"],
             "job_url": raw.get("job_url"),
@@ -118,12 +142,12 @@ def main() -> None:
             "location": raw.get("location"),
             "date_posted": raw.get("date_posted"),
             "prefilter_score": decision.score,
-            "prefilter_decision": decision.tier if decision.accepted else "rejected",
-            "prefilter_reason": decision.reason,
+            "prefilter_decision": "rescore_open" if force_rescore else (decision.tier if decision.accepted else "rejected"),
+            "prefilter_reason": "nightly_open_rescore" if force_rescore else decision.reason,
             "prefilter_signals": "; ".join(decision.signals),
         }
         audit.append(audit_row)
-        if decision.accepted:
+        if decision.accepted or force_rescore:
             candidates.append(raw)
         else:
             rejected_pool.append(raw)
@@ -136,8 +160,10 @@ def main() -> None:
         ),
         reverse=True,
     )
-    max_jobs = int(prefilter_config.get("max_llm_jobs", 40))
-    sample_size = min(int(prefilter_config.get("recall_audit_sample_size", 5)), max_jobs)
+    configured_max = prefilter_config.get("max_llm_jobs", 40)
+    max_jobs = None if configured_max in {None, "all"} else int(configured_max)
+    configured_sample = int(prefilter_config.get("recall_audit_sample_size", 5))
+    sample_size = configured_sample if max_jobs is None else min(configured_sample, max_jobs)
 
     recall_reasons = set(prefilter_config.get("recall_audit_reasons") or (
         "generic_without_biological_evidence",
@@ -157,8 +183,8 @@ def main() -> None:
     for job in recall_samples:
         job["prefilter_tier"] = "recall_sample"
 
-    candidate_capacity = max(0, max_jobs - len(recall_samples))
-    selected_candidates = candidates[:candidate_capacity]
+    candidate_capacity = None if max_jobs is None else max(0, max_jobs - len(recall_samples))
+    selected_candidates = candidates if candidate_capacity is None else candidates[:candidate_capacity]
     selected = selected_candidates + recall_samples
     selected_ids = {job["job_id"] for job in selected}
     candidate_by_id = {job["job_id"]: job for job in candidates}
@@ -210,6 +236,7 @@ def main() -> None:
         "selected": len(selected),
         "selected_strong": sum(job.get("prefilter_tier") == "strong" for job in selected),
         "selected_borderline": sum(job.get("prefilter_tier") == "borderline" for job in selected),
+        "rescore_open": sum(job.get("prefilter_tier") == "rescore_open" for job in selected),
         "recall_samples": len(recall_samples),
         "deferred": max(0, len(candidates) - len(selected_candidates)),
         "rejected": sum(row["prefilter_decision"] == "rejected" for row in audit),

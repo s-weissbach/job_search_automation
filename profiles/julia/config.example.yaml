@@ -44,7 +44,8 @@ assessment:
 prefilter:
   enabled: true
   min_relevance_score: 7
-  max_llm_jobs: 40
+  max_llm_jobs: null
+  rescore_open_jobs: true
   recall_audit_sample_size: 5
   max_description_chars: 8000
   llm_description_chars: 5000
@@ -98,5 +99,6 @@ pharmajob_io:
   timeout_seconds: 15
   page_size: 100
   max_pages: 5
+  max_age_days: 14
 
 company_portals: {}
