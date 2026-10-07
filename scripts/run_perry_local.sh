@@ -193,6 +193,7 @@ echo "=== $PROFILE complete $(date) ==="
 
 # The existing launch agent keeps calling this script once. After the owner's
 # run, start Julia's isolated profile when its two private files are installed.
-if [ "$PROFILE" = "owner" ] && [ -s "$REPO/profiles/julia/config.yaml" ] && [ -s "$REPO/profiles/julia/cv_compressed.yaml" ]; then
+if [ "$PROFILE" = "owner" ] && [ "${JOB_SEARCH_RUN_JULIA_AFTER_OWNER:-1}" = "1" ] \
+        && [ -s "$REPO/profiles/julia/config.yaml" ] && [ -s "$REPO/profiles/julia/cv_compressed.yaml" ]; then
     JOB_SEARCH_PROFILE=julia "$0"
 fi
