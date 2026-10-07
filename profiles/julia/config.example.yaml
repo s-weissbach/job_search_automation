@@ -15,9 +15,14 @@ search:
   sites:
     - "linkedin"
   results_per_site: 20
-  # JobSpy's LinkedIn pagination stops at offset 1,000, its native maximum.
+  # Keep each slice bounded; large repeated pulls trigger LinkedIn throttling.
   results_per_site_by_site:
-    linkedin: 1000
+    linkedin: 300
+  # Avoid burst-throttling across the title/location matrix. Retry a completely
+  # empty slice once after a longer pause if LinkedIn temporarily refuses it.
+  search_delay_seconds: 5
+  empty_retry_attempts: 1
+  empty_retry_delay_seconds: 45
   hours_old: 72
   linkedin_fetch_description: true
   location_city_map:

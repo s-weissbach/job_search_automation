@@ -12,6 +12,10 @@ search:
     - "linkedin"
     - "indeed"
   results_per_site: 20
+  # Optional pacing and retry controls for sources that throttle bursty searches.
+  search_delay_seconds: 0
+  empty_retry_attempts: 0
+  empty_retry_delay_seconds: 60
   hours_old: 72
   country_indeed: "USA"        # Change to your country: Germany, UK, etc.
   # Set true to fetch full descriptions from LinkedIn (slower but better assessments)

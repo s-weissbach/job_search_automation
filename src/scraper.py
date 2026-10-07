@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 
 from src.text_utils import clean_description
@@ -8,18 +10,35 @@ def scrape_jobs(config: dict) -> pd.DataFrame:
     sites = search_cfg.get("sites", ["linkedin", "indeed"])
     results = []
 
-    for keyword in search_cfg["keywords"]:
-        for location in search_cfg["locations"]:
-            print(f"  '{keyword}' in '{location}'...", end=" ", flush=True)
+    searches = [
+        (keyword, location)
+        for keyword in search_cfg["keywords"]
+        for location in search_cfg["locations"]
+    ]
+    for search_index, (keyword, location) in enumerate(searches):
+        if search_index:
+            _sleep(search_cfg.get("search_delay_seconds", 0))
+        print(f"  '{keyword}' in '{location}'...", end=" ", flush=True)
+        attempts = max(1, int(search_cfg.get("empty_retry_attempts", 0)) + 1)
+        for attempt in range(attempts):
             try:
                 df = _scrape_one(keyword, location, sites, search_cfg)
                 if df is not None and not df.empty:
                     results.append(df)
                     print(f"{len(df)} jobs")
-                else:
-                    print("0 jobs")
+                    break
+                if attempt + 1 < attempts:
+                    print("0 jobs; retrying...", end=" ", flush=True)
+                    _sleep(search_cfg.get("empty_retry_delay_seconds", 60))
+                    continue
+                print("0 jobs")
             except Exception as e:
+                if attempt + 1 < attempts:
+                    print(f"failed ({e}); retrying...", end=" ", flush=True)
+                    _sleep(search_cfg.get("empty_retry_delay_seconds", 60))
+                    continue
                 print(f"failed ({e})")
+            break
 
     if not results:
         return pd.DataFrame()
@@ -77,3 +96,9 @@ def _indeed_country(location: str, cfg: dict) -> str | None:
         if str(configured_location).strip().casefold() == normalized_location:
             return str(country)
     return cfg.get("country_indeed")
+
+
+def _sleep(seconds: int | float | str | None) -> None:
+    delay = max(0.0, float(seconds or 0))
+    if delay:
+        time.sleep(delay)

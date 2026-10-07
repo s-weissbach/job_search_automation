@@ -230,7 +230,10 @@ If you don't want Supabase, remove the two Supabase steps from `daily_search.yml
 | `sites` | JobSpy sources: `linkedin`, `indeed`, `google` |
 | `hours_old` | Only jobs posted in the last N hours |
 | `results_per_site` | Max results per keyword × location × site |
-| `results_per_site_by_site` | Optional per-site overrides, such as `linkedin: 1000` |
+| `results_per_site_by_site` | Optional per-site overrides, such as `linkedin: 300` |
+| `search_delay_seconds` | Pause between keyword/location searches to reduce burst throttling |
+| `empty_retry_attempts` | Retry count for a completely empty or failed search slice |
+| `empty_retry_delay_seconds` | Pause before retrying an empty or failed search slice |
 | `country_indeed` | Default Indeed country routing (e.g. `Germany`) |
 | `country_indeed_by_location` | Optional map from each configured location to its Indeed market; overrides the default for matching locations |
 | `linkedin_fetch_description` | Fetch full LinkedIn descriptions (slower, better assessments) |
