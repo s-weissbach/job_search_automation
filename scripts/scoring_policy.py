@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import re
+if __package__:
+    from .salary_normalization import normalize_salary_fields
+else:
+    from salary_normalization import normalize_salary_fields
 
 
 _NON_PHD_DEGREE = re.compile(r"\b(?:bachelor(?:'s)?|master(?:'s)?|bsc|msc|m\.sc\.)\b", re.I)
@@ -30,7 +34,7 @@ def _julia_is_below_phd_level(job: dict) -> bool:
 
 def apply_scoring_policy(job: dict, assessment: dict, policy: str | None = None) -> dict:
     """Return a normalized copy whose score follows auditable fixed rules."""
-    normalized = dict(assessment)
+    normalized = normalize_salary_fields(assessment)
     if policy == "julia-phd" and _julia_is_below_phd_level(job):
         normalized["seniority_match"] = "too_junior"
         concerns = list(normalized.get("concerns") or [])

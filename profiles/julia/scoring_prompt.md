@@ -39,4 +39,5 @@ Salary extraction:
 
 - Extract compensation only when explicitly stated. Never estimate it.
 - Expand abbreviations such as `120k` to `120000`; preserve the short source phrase in `salary_text`.
+- Preserve decimal cents and locale separators: `3.463,06 EUR monthly` means `3463.06` per month; `15 € Stundenlohn` means `15` per hour, never `15000`. Expand thousands only when the source actually uses `k` or a thousands separator.
 - Use only an explicit or unambiguous ISO currency and one of `hour`, `day`, `month`, or `year`; otherwise return null salary fields.

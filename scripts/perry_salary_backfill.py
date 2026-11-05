@@ -20,6 +20,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from perry_score import clean_answer
+from salary_normalization import normalize_salary_fields
 from website_job_sync import DEFAULT_URL, keychain_key, request_json, with_query
 
 
@@ -63,7 +64,7 @@ def has_salary_signal(job: dict) -> bool:
 
 
 def salary_row(job: dict, salary: dict | None = None) -> dict:
-    salary = salary or {}
+    salary = normalize_salary_fields(salary or {})
     return {
         "job_url": job["job_url"],
         "salary_min": salary.get("salary_min"),
