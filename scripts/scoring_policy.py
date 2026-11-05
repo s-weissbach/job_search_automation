@@ -41,9 +41,9 @@ def apply_scoring_policy(job: dict, assessment: dict, policy: str | None = None)
 
     components = normalized.get("score_components")
     if isinstance(components, dict) and components and all(isinstance(value, int) for value in components.values()):
-        # This component is factual rather than interpretive: pharma/biotech
-        # R&D receives the rubric's full five points.
-        if normalized.get("job_sector") == "industry" and "industry_fit" in components:
+        # Julia is open to every employer sector. Keep the existing component
+        # for schema compatibility, but never use it as a sector penalty.
+        if (policy == "julia-phd" or normalized.get("job_sector") == "industry") and "industry_fit" in components:
             components = {**components, "industry_fit": 5}
             normalized["score_components"] = components
         score = sum(components.values())

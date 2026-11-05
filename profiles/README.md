@@ -13,8 +13,9 @@ Copy the matching `config.example.yaml`, then run a profile manually with:
 JOB_SEARCH_PROFILE=julia scripts/run_perry_local.sh
 ```
 
-The default owner run automatically starts Julia's isolated run when both of
-her private files exist. Results and score caches stay under
+The default daily batch runs Julia first when both of her private files exist,
+then the owner, even if Julia's run fails. Set `JOB_SEARCH_PROFILE=owner` or
+`JOB_SEARCH_PROFILE=julia` to run just that profile. Results and score caches stay under
 `results/<profile>/`, and website synchronization includes the profile ID.
 
 Job titles and locations can also

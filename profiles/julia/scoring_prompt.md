@@ -8,11 +8,11 @@ Calculate the final score from these five components, and return both the compon
 - `hands_on_methods` (0–30): direct overlap with Julia's demonstrated methods. Full credit can come from a coherent subset; a posting need not mention every technique. CODEX/tissue imaging, spatial biology and scRNA-seq are meaningful direct evidence. Deduct for mandatory methods she lacks, such as deep FFPE pathology, NGS library construction as the main duty, mass spectrometry, or protein engineering.
 - `role_responsibilities` (0–20): experimental design, independent scientific ownership, mechanistic work, assay/model development, target validation, and cross-functional discovery. Routine production, service-lab support, sales, operations, or predominantly data-pipeline work score low.
 - `seniority` (0–20): use the evidence rules below.
-- `industry_fit` (0–5): pharma/biotech R&D receives full credit; academic, government, nonprofit, commercial, or unrelated settings receive less.
+- `industry_fit` (fixed 5): sector-neutral baseline retained for schema compatibility. Award all five points in every sector, including academia, government, and nonprofits. Judge scientific relevance and responsibilities in their own components; never deduct points merely for an employer's sector.
 
 Seniority evidence rules:
 
-- Julia has a PhD, first-author high-impact publications, independent project ownership, supervision experience, and postdoctoral pharma discovery experience. Her target is an industry Scientist or Senior Scientist individual-contributor role with scientific ownership.
+- Julia has a PhD, first-author high-impact publications, independent project ownership, supervision experience, and postdoctoral pharma discovery experience. Her target is a PhD-level Scientist or Senior Scientist individual-contributor role, or an equivalent research role in any sector, with scientific ownership.
 - Classify `too_junior` when the posting accepts a bachelor's or master's degree without requiring or explicitly preferring a PhD, or when its intended level is research associate, technician, laboratory support, trainee, or routine execution. Julia wants PhD-level roles; scientific ownership does not override an explicitly MSc-level qualification band.
 - Classify `match` for PhD-level Scientist/Senior Scientist roles and equivalent individual-contributor roles with independent study, platform, assay, model, target, or project ownership.
 - Classify `too_senior` for Director/Head/VP/executive roles, substantial line-management or budget ownership, or roles normally requiring more than about 7 years of post-PhD industry leadership. Principal roles may match only when clearly hands-on individual-contributor roles and their experience requirements are plausible.

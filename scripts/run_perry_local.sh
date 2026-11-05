@@ -9,7 +9,10 @@ LMS_MODEL="qwen3.8-27b-mlx"
 LMS_IDENTIFIER="qwen3.8-27b-local"
 LMS_STARTED_BY_JOB=0
 LMS_SERVICE_PID=""
-PROFILE="${JOB_SEARCH_PROFILE:-owner}"
+PROFILE="${JOB_SEARCH_PROFILE:-all}"
+if [ "$PROFILE" = "all" ]; then
+    exec /bin/bash "$REPO/scripts/run_daily_profiles.sh"
+fi
 SENIORITY_POLICY=""
 REPLACE_EXISTING=0
 if [ "$PROFILE" = "owner" ]; then
@@ -190,10 +193,3 @@ fi
 
 /bin/rm -f -- "$RESULTS/.scrape_cache.csv"
 echo "=== $PROFILE complete $(date) ==="
-
-# The existing launch agent keeps calling this script once. After the owner's
-# run, start Julia's isolated profile when its two private files are installed.
-if [ "$PROFILE" = "owner" ] && [ "${JOB_SEARCH_RUN_JULIA_AFTER_OWNER:-1}" = "1" ] \
-        && [ -s "$REPO/profiles/julia/config.yaml" ] && [ -s "$REPO/profiles/julia/cv_compressed.yaml" ]; then
-    JOB_SEARCH_PROFILE=julia "$0"
-fi

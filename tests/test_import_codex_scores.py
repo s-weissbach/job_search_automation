@@ -62,6 +62,28 @@ class ImportCodexScoresTests(unittest.TestCase):
         self.assertEqual(result["job-1"]["score_components"]["industry_fit"], 5)
         self.assertEqual(result["job-1"]["score"], 72)
 
+    def test_julia_receives_the_same_score_in_every_sector(self):
+        for sector in ("industry", "academia", "government", "nonprofit", "other"):
+            with self.subTest(sector=sector):
+                item = assessment("job-1")
+                item["job_sector"] = sector
+                item["score_components"] = {"scientific_domain": 25, "hands_on_methods": 25,
+                                            "role_responsibilities": 15, "seniority": 15, "industry_fit": 0}
+                queue = [{"job_id": "job-1", "title": "Scientist", "description": "PhD required"}]
+                result = _validate(queue, {"assessments": [item]}, "julia-phd")["job-1"]
+                self.assertEqual(result["score_components"]["industry_fit"], 5)
+                self.assertEqual(result["score"], 85)
+
+    def test_owner_retains_nonindustry_component_and_seniority_caps_still_apply(self):
+        item = assessment("job-1")
+        item["job_sector"] = "academia"
+        item["score_components"] = {"scientific_domain": 25, "hands_on_methods": 25,
+                                    "role_responsibilities": 15, "seniority": 15, "industry_fit": 0}
+        queue = [{"job_id": "job-1", "title": "Scientist", "description": "PhD required"}]
+        self.assertEqual(_validate(queue, {"assessments": [item]})["job-1"]["score"], 80)
+        item["seniority_match"] = "too_senior"
+        self.assertEqual(_validate(queue, {"assessments": [item]}, "julia-phd")["job-1"]["score"], 54)
+
 
 if __name__ == "__main__":
     unittest.main()
